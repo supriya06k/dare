@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DARE & VALIDATE</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:-apple-system,system-ui,sans-serif;cursor:none}
+
+#c{position:fixed;inset:0;z-index:0}
+
+/* custom cursor */
+#cursor{position:fixed;pointer-events:none;z-index:9999;mix-blend-mode:screen}
+#cursor .ring{
+  position:absolute;border-radius:50%;transform:translate(-50%,-50%);transition:width .15s,height .15s,opacity .15s;
+}
+#cursor .c1{width:8px;height:8px;background:rgba(255,255,255,0.9);box-shadow:0 0 12px #fff,0 0 24px rgba(15,244,198,0.8)}
+#cursor .c2{width:32px;height:32px;border:1px solid rgba(255,255,255,0.3);transition:all .08s}
+#cursor .c3{width:64px;height:64px;border:1px solid rgba(255,255,255,0.08);transition:all .12s}
+body.hovering #cursor .c2{width:48px;height:48px;border-color:rgba(15,244,198,0.6)}
+body.hovering #cursor .c3{width:96px;height:96px;border-color:rgba(15,244,198,0.2)}
+body.clicking #cursor .c1{width:4px;height:4px}
+body.clicking #cursor .c2{width:20px;height:20px}
+
+/* void text */
+#intro{
+  position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;pointer-events:none;
+  transition:opacity 1.5s ease;
+}
+#intro h1{
+  font-size:clamp(40px,7vw,88px);font-weight:900;letter-spacing:-3px;line-height:0.9;
+  text-align:center;color:#fff;
+  text-shadow:0 0 80px rgba(255,255,255,0.15);
+}
+#intro h1 em{
+  font-style:normal;
+  background:linear-gradient(135deg,#0ff4c6,#7b2fff,#ff6b35);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-size:300%;animation:gs 4s ease infinite;
+}
+@keyframes gs{0%,100%{background-position:0%}50%{background-position:100%}}
+#intro p{margin-top:20px;color:rgba(255,255,255,0.3);font-size:14px;letter-spacing:3px;text-transform:uppercase}
+#intro.hidden{opacity:0}
+
+/* orbit label — appears near orbs */
+.orb-label{
+  position:fixed;pointer-events:none;z-index:40;
+  transform:translate(-50%,-50%);
+  text-align:center;transition:opacity .3s;
+}
+.orb-label .pts{
+  font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;
+  padding:4px 12px;border-radius:100px;
+  background:rgba(0,0,0,0.6);backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);
+  white-space:nowrap;
+}
+.orb-label .name{
+  font-size:15px;font-weight:800;color:#fff;margin-top:6px;
+  text-shadow:0 2px 20px rgba(0,0,0,0.8);
+}
+
+/* FULLSCREEN CHALLENGE VIEW */
+#challenge-view{
+  position:fixed;inset:0;z-index:100;
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;opacity:0;
+  transition:opacity .6s ease;
+}
+#challenge-view.open{opacity:1;pointer-events:all}
+
+#challenge-view .backdrop{
+  position:absolute;inset:0;
+  background:radial-gradient(ellipse at center, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.95) 100%);
+  backdrop-filter:blur(30px);
+}
+
+#challenge-inner{
+  position:relative;z-index:10;
+  width:min(520px,92vw);
+  transform:scale(0.85);transition:transform .5s cubic-bezier(.34,1.56,.64,1);
+}
+#challenge-view.open #challenge-inner{transform:scale(1)}
+
+.ch-close{
+  position:absolute;top:-16px;right:-16px;
+  width:44px;height:44px;border-radius:50%;
+  background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:18px;color:rgba(255,255,255,0.6);
+  transition:all .2s;
+}
+.ch-close:hover{background:rgba(255,255,255,0.12);color:#fff}
+
+.ch-orb-preview{
+  width:80px;height:80px;border-radius:50%;margin:0 auto 20px;
+  display:flex;align-items:center;justify-content:center;font-size:36px;
+  box-shadow:0 0 60px var(--orb-glow,rgba(15,244,198,0.5));
+}
+
+.ch-category{
+  text-align:center;font-size:11px;font-weight:800;letter-spacing:3px;
+  text-transform:uppercase;color:var(--orb-color,#0ff4c6);margin-bottom:12px;
+}
+.ch-title{
+  text-align:center;font-size:28px;font-weight:900;letter-spacing:-0.5px;
+  color:#fff;margin-bottom:12px;line-height:1.1;
+}
+.ch-desc{
+  text-align:center;font-size:15px;color:rgba(255,255,255,0.5);
+  line-height:1.6;margin-bottom:28px;
+}
+
+.ch-stats{
+  display:flex;justify-content:center;gap:28px;margin-bottom:28px;
+}
+.ch-stat{text-align:center}
+.ch-stat .val{font-size:22px;font-weight:900;color:#fff}
+.ch-stat .lbl{font-size:11px;color:rgba(255,255,255,0.3);letter-spacing:1px;margin-top:2px}
+
+.ch-rules{
+  background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);
+  border-radius:16px;padding:16px 20px;margin-bottom:28px;
+}
+.ch-rule{
+  display:flex;gap:10px;padding:8px 0;
+  border-bottom:1px solid rgba(255,255,255,0.04);
+  font-size:13px;color:rgba(255,255,255,0.6);line-height:1.5;
+}
+.ch-rule:last-child{border-bottom:none}
+.ch-rule span{color:var(--orb-color,#0ff4c6);flex-shrink:0}
+
+.ch-accept{
+  width:100%;padding:18px;border-radius:14px;border:none;cursor:pointer;
+  font-size:17px;font-weight:900;color:#000;letter-spacing:0.3px;
+  background:linear-gradient(135deg,var(--orb-a),var(--orb-b));
+  transition:all .3s;position:relative;overflow:hidden;
+}
+.ch-accept::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent);
+  transform:translateX(-100%);transition:transform .5s;
+}
+.ch-accept:hover::after{transform:translateX(100%)}
+.ch-accept:hover{transform:translateY(-2px);box-shadow:0 16px 48px rgba(0,0,0,0.4)}
+
+/* SUBMIT PORTAL */
+#submit-view{
+  position:fixed;inset:0;z-index:100;
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;opacity:0;transition:opacity .6s;
+}
+#submit-view.open{opacity:1;pointer-events:all}
+#submit-view .backdrop{position:absolute;inset:0;background:rgba(0,0,0,0.92);backdrop-filter:blur(30px)}
+
+#submit-inner{
+  position:relative;z-index:10;width:min(480px,90vw);
+  transform:translateY(30px);transition:transform .5s cubic-bezier(.34,1.56,.64,1);
+}
+#submit-view.open #submit-inner{transform:translateY(0)}
+
+.portal-ring{
+  width:140px;height:140px;border-radius:50%;margin:0 auto 24px;
+  position:relative;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+}
+.portal-ring::before,
+.portal-ring::after{
+  content:'';position:absolute;inset:0;border-radius:50%;
+  border:2px solid transparent;
+  background:linear-gradient(#000,#000) padding-box,
+             linear-gradient(var(--angle,0deg),#0ff4c6,#7b2fff,#ff6b35,#0ff4c6) border-box;
+  animation:spin 3s linear infinite;
+}
+.portal-ring::after{inset:12px;animation-direction:reverse;animation-duration:2s}
+@keyframes spin{to{--angle:360deg}}
+@property --angle{syntax:'<angle>';initial-value:0deg;inherits:false}
+
+.portal-center{
+  width:80px;height:80px;border-radius:50%;
+  background:radial-gradient(circle,rgba(15,244,198,0.2),transparent);
+  border:1px solid rgba(15,244,198,0.3);
+  display:flex;align-items:center;justify-content:center;
+  font-size:28px;transition:all .3s;
+  position:relative;z-index:2;
+}
+.portal-ring:hover .portal-center{background:radial-gradient(circle,rgba(15,244,198,0.4),transparent);transform:scale(1.1)}
+
+.submit-title{text-align:center;font-size:24px;font-weight:900;color:#fff;margin-bottom:8px}
+.submit-task{
+  text-align:center;font-size:13px;color:rgba(255,255,255,0.4);margin-bottom:28px;
+}
+.submit-task strong{color:rgba(255,255,255,0.8)}
+
+.checks{display:flex;flex-direction:column;gap:10px;margin-bottom:24px}
+.chk{
+  display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;
+  background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);cursor:pointer;
+  transition:all .2s;
+}
+.chk:hover{border-color:rgba(255,255,255,0.12)}
+.chk.on{border-color:rgba(15,244,198,0.3);background:rgba(15,244,198,0.05)}
+.chk-box{
+  width:20px;height:20px;border-radius:5px;border:2px solid rgba(255,255,255,0.15);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s;font-size:11px;font-weight:900;
+}
+.chk.on .chk-box{background:#0ff4c6;border-color:#0ff4c6;color:#000}
+.chk-text{font-size:13px;color:rgba(255,255,255,0.6)}
+.chk.on .chk-text{color:rgba(255,255,255,0.85)}
+
+.submit-btn{
+  width:100%;padding:16px;border-radius:12px;border:none;cursor:pointer;
+  font-size:16px;font-weight:900;letter-spacing:0.3px;
+  background:linear-gradient(135deg,#0ff4c6,#7b2fff);color:#fff;
+  transition:all .3s;opacity:.4;pointer-events:none;
+}
+.submit-btn.ready{opacity:1;pointer-events:all}
+.submit-btn.ready:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(123,47,255,0.4)}
+
+.s-close{
+  position:absolute;top:-14px;right:-14px;width:40px;height:40px;border-radius:50%;
+  background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  color:rgba(255,255,255,0.5);font-size:16px;transition:all .2s;
+}
+.s-close:hover{background:rgba(255,255,255,0.1);color:#fff}
+
+/* LEADERBOARD */
+#lb-view{
+  position:fixed;inset:0;z-index:100;
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;opacity:0;transition:opacity .6s;
+}
+#lb-view.open{opacity:1;pointer-events:all}
+#lb-view .backdrop{position:absolute;inset:0;background:rgba(0,0,0,0.92);backdrop-filter:blur(30px)}
+#lb-inner{
+  position:relative;z-index:10;width:min(480px,90vw);
+  transform:translateY(30px);transition:transform .5s cubic-bezier(.34,1.56,.64,1);
+}
+#lb-view.open #lb-inner{transform:translateY(0)}
+
+.lb-head{text-align:center;margin-bottom:24px}
+.lb-head h2{font-size:26px;font-weight:900;color:#fff;letter-spacing:-0.5px}
+.lb-head p{font-size:13px;color:rgba(255,255,255,0.35);margin-top:4px}
+
+.season-bar{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:14px 18px;border-radius:14px;
+  background:linear-gradient(135deg,rgba(123,47,255,0.12),rgba(15,244,198,0.06));
+  border:1px solid rgba(123,47,255,0.2);margin-bottom:20px;
+}
+.season-bar .ends{font-size:12px;color:rgba(255,255,255,0.4);font-weight:600}
+.season-bar .prize{font-size:20px;font-weight:900;color:#ffd60a}
+
+.lb-rows{display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto;padding-right:4px}
+.lb-rows::-webkit-scrollbar{width:3px}
+.lb-rows::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
+
+.lb-row{
+  display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;
+  background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);
+  transition:all .2s;cursor:pointer;
+}
+.lb-row:hover{background:rgba(255,255,255,0.06);transform:translateX(4px)}
+.lb-row.me{border-color:rgba(15,244,198,0.25);background:rgba(15,244,198,0.04)}
+.lb-pos{width:24px;text-align:center;font-size:14px;font-weight:900;color:rgba(255,255,255,0.3)}
+.lb-row:nth-child(1) .lb-pos{color:#ffd60a}
+.lb-row:nth-child(2) .lb-pos{color:#c0c0c0}
+.lb-row:nth-child(3) .lb-pos{color:#cd7f32}
+.lb-av{
+  width:38px;height:38px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;
+}
+.lb-meta{flex:1}
+.lb-handle{font-size:14px;font-weight:700;color:#fff}
+.lb-sub{font-size:11px;color:rgba(255,255,255,0.3);margin-top:2px}
+.lb-score{font-size:16px;font-weight:900;color:#ffd60a;white-space:nowrap}
+.lb-score small{font-size:10px;color:rgba(255,255,255,0.3);font-weight:600}
+
+.lb-close{
+  position:absolute;top:-14px;right:-14px;width:40px;height:40px;border-radius:50%;
+  background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  color:rgba(255,255,255,0.5);font-size:16px;transition:all .2s;
+}
+.lb-close:hover{background:rgba(255,255,255,0.1);color:#fff}
+
+/* SUCCESS BURST */
+#success{
+  position:fixed;inset:0;z-index:200;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  pointer-events:none;opacity:0;transition:opacity .5s;
+  background:rgba(0,0,0,0.95);
+}
+#success.show{opacity:1;pointer-events:all}
+.burst-ring{
+  width:120px;height:120px;border-radius:50%;
+  background:radial-gradient(circle,rgba(15,244,198,0.3),transparent);
+  border:2px solid rgba(15,244,198,0.5);
+  display:flex;align-items:center;justify-content:center;font-size:48px;
+  animation:burstIn .5s cubic-bezier(.34,1.56,.64,1);
+  box-shadow:0 0 80px rgba(15,244,198,0.3);margin-bottom:24px;
+}
+@keyframes burstIn{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
+#success h2{font-size:30px;font-weight:900;color:#fff;margin-bottom:8px}
+#success p{font-size:15px;color:rgba(255,255,255,0.4);text-align:center;max-width:300px;line-height:1.5;margin-bottom:20px}
+#success .pts-pill{
+  padding:10px 24px;border-radius:100px;
+  background:rgba(255,214,10,0.1);border:1px solid rgba(255,214,10,0.25);
+  font-size:20px;font-weight:900;color:#ffd60a;margin-bottom:20px;
+}
+#success button{
+  padding:12px 28px;border-radius:100px;background:rgba(255,255,255,0.06);
+  border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.7);
+  font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;
+}
+#success button:hover{background:rgba(255,255,255,0.1);color:#fff}
+
+/* floating hints */
+#hints{
+  position:fixed;bottom:32px;left:50%;transform:translateX(-50%);
+  z-index:50;display:flex;gap:16px;pointer-events:none;
+  opacity:0;transition:opacity 1s ease;
+}
+#hints.show{opacity:1}
+.hint{
+  padding:8px 16px;border-radius:100px;
+  background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);
+  font-size:12px;color:rgba(255,255,255,0.35);letter-spacing:1px;
+  cursor:pointer;pointer-events:all;transition:all .2s;
+}
+.hint:hover{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);border-color:rgba(255,255,255,0.15)}
+
+/* toast */
+#toast{
+  position:fixed;top:24px;left:50%;transform:translateX(-50%) translateY(-16px);
+  z-index:999;opacity:0;transition:all .35s cubic-bezier(.34,1.56,.64,1);pointer-events:none;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast div{
+  padding:10px 18px;border-radius:100px;
+  background:rgba(5,5,5,0.95);backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,0.08);
+  font-size:13px;font-weight:600;color:rgba(255,255,255,0.85);
+  white-space:nowrap;display:flex;align-items:center;gap:8px;
+}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<!-- CURSOR -->
+<div id="cursor">
+  <div class="ring c3"></div>
+  <div class="ring c2"></div>
+  <div class="ring c1"></div>
+</div>
+
+<!-- INTRO TEXT -->
+<div id="intro">
+  <h1>DARE<br><em>&amp; VALIDATE</em></h1>
+  <p>Reach into the void. Touch a challenge.</p>
+</div>
+
+<!-- FLOATING HINTS -->
+<div id="hints">
+  <div class="hint" onclick="openLB()">🏆 Leaderboard</div>
+  <div class="hint" onclick="openSubmit()">🎬 Submit Proof</div>
+</div>
+
+<!-- CHALLENGE VIEW -->
+<div id="challenge-view">
+  <div class="backdrop" onclick="closeChallenge()"></div>
+  <div id="challenge-inner">
+    <div class="ch-close" onclick="closeChallenge()">✕</div>
+    <div class="ch-orb-preview" id="ch-emoji">🤹</div>
+    <div class="ch-category" id="ch-cat">SKILL CHALLENGE</div>
+    <div class="ch-title" id="ch-title">Title</div>
+    <div class="ch-desc" id="ch-desc">Description</div>
+    <div class="ch-stats">
+      <div class="ch-stat"><div class="val" id="ch-pts">75</div><div class="lbl">POINTS</div></div>
+      <div class="ch-stat"><div class="val" id="ch-verified">48</div><div class="lbl">VERIFIED</div></div>
+      <div class="ch-stat"><div class="val" id="ch-hype">847</div><div class="lbl">HYPE</div></div>
+    </div>
+    <div class="ch-rules" id="ch-rules"></div>
+    <button class="ch-accept" id="ch-accept" onclick="goSubmit()">Accept This Dare →</button>
+  </div>
+</div>
+
+<!-- SUBMIT VIEW -->
+<div id="submit-view">
+  <div class="backdrop" onclick="closeSubmit()"></div>
+  <div id="submit-inner">
+    <div class="s-close" onclick="closeSubmit()">✕</div>
+    <div class="portal-ring" onclick="triggerUpload()">
+      <div class="portal-center" id="portal-icon">🎬</div>
+    </div>
+    <div class="submit-title">Drop Your Proof</div>
+    <div class="submit-task">Submitting for: <strong id="submit-task-name">Juggle 5 Objects</strong></div>
+    <div class="checks">
+      <div class="chk" onclick="toggleChk(this)"><div class="chk-box"></div><div class="chk-text">My face is clearly visible throughout the video</div></div>
+      <div class="chk" onclick="toggleChk(this)"><div class="chk-box"></div><div class="chk-text">Task completed uncut, start to finish on camera</div></div>
+      <div class="chk" onclick="toggleChk(this)"><div class="chk-box"></div><div class="chk-text">This is my original submission, not recycled footage</div></div>
+    </div>
+    <button class="submit-btn" id="submit-btn" onclick="handleSubmit()">Throw Into Verification Portal →</button>
+  </div>
+</div>
+
+<!-- LEADERBOARD VIEW -->
+<div id="lb-view">
+  <div class="backdrop" onclick="closeLB()"></div>
+  <div id="lb-inner">
+    <div class="lb-close" onclick="closeLB()">✕</div>
+    <div class="lb-head"><h2>Season One</h2><p>Crowd-verified. Tamper-proof. Resets in 14 days.</p></div>
+    <div class="season-bar">
+      <div><div class="ends">SEASON ENDS</div><div style="font-size:18px;font-weight:900;color:#fff;margin-top:2px">14d 07h 42m</div></div>
+      <div><div class="ends" style="text-align:right">TOP PRIZE</div><div class="prize">$500</div></div>
+    </div>
+    <div class="lb-rows">
+      <div class="lb-row"><div class="lb-pos">1</div><div class="lb-av" style="background:linear-gradient(135deg,#ffd60a,#e6a800)">Z</div><div class="lb-meta"><div class="lb-handle">@zephyrx</div><div class="lb-sub">18 verified · Skill specialist</div></div><div class="lb-score">3,420 <small>pts</small></div></div>
+      <div class="lb-row"><div class="lb-pos">2</div><div class="lb-av" style="background:linear-gradient(135deg,#888,#555)">M</div><div class="lb-meta"><div class="lb-handle">@maxrunner</div><div class="lb-sub">14 verified · Creative</div></div><div class="lb-score">2,840 <small>pts</small></div></div>
+      <div class="lb-row"><div class="lb-pos">3</div><div class="lb-av" style="background:linear-gradient(135deg,#cd7f32,#8B4513)">K</div><div class="lb-meta"><div class="lb-handle">@kira_v</div><div class="lb-sub">11 verified · Social queen</div></div><div class="lb-score">2,510 <small>pts</small></div></div>
+      <div class="lb-row"><div class="lb-pos">4</div><div class="lb-av" style="background:linear-gradient(135deg,#7b2fff,#4a00e0)">D</div><div class="lb-meta"><div class="lb-handle">@daredevil88</div><div class="lb-sub">12 verified · Fitness</div></div><div class="lb-score">2,280 <small>pts</small></div></div>
+      <div class="lb-row"><div class="lb-pos">5</div><div class="lb-av" style="background:linear-gradient(135deg,#ff6b35,#ff2d55)">S</div><div class="lb-meta"><div class="lb-handle">@sundropz</div><div class="lb-sub">9 verified · Creative</div></div><div class="lb-score">1,940 <small>pts</small></div></div>
+      <div class="lb-row me"><div class="lb-pos">—</div><div class="lb-av" style="background:#111;border:1px solid rgba(255,255,255,0.1)">?</div><div class="lb-meta"><div class="lb-handle" style="color:rgba(255,255,255,0.4)">You — unranked</div><div class="lb-sub">Submit your first dare →</div></div><div class="lb-score" style="color:rgba(255,255,255,0.3)">0</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SUCCESS -->
+<div id="success">
+  <div class="burst-ring">🚀</div>
+  <h2>Proof Submitted!</h2>
+  <p>In the verification queue. Reviewers will check your submission — usually within 24 hours.</p>
+  <div class="pts-pill" id="s-pts">+75 pts pending</div>
+  <button onclick="closeSuccess()">Return to the Void</button>
+</div>
+
+<!-- TOAST -->
+<div id="toast"><div id="toast-inner"></div></div>
+
+<script>
+// ─── DATA ────────────────────────────────────────────────────
+const CHALLENGES = [
+  {
+    id:0, emoji:'🤹', label:'Juggle 5 for 30s', cat:'SKILL CHALLENGE',
+    title:'Juggle 5 Objects for 30 Seconds',
+    desc:'Any objects, any technique — just keep all 5 in the air for a full 30 seconds without dropping.',
+    pts:75, verified:48, hype:847,
+    colorA:'#0ff4c6', colorB:'#7b2fff', glowColor:'rgba(15,244,198,0.5)',
+    rules:['All 5 objects airborne simultaneously for 30 continuous seconds','No elevated surfaces — ground level only','Timer visible on screen or reference clock in frame','Full body and hands in frame throughout']
+  },
+  {
+    id:1, emoji:'🎤', label:'60s Freestyle Rap', cat:'CREATIVE CHALLENGE',
+    title:'60-Second Freestyle Rap About Your Day',
+    desc:'No prep, no backing track. You, a clock, whatever happened today — rhymed on the spot. Continuous, no pausing.',
+    pts:50, verified:127, hype:2190,
+    colorA:'#ff6b35', colorB:'#ff2d55', glowColor:'rgba(255,107,53,0.5)',
+    rules:['Minimum 60 seconds uninterrupted','No pre-written lyrics — freestyle only','Must reference at least one real thing from your day','No music backing track in v1']
+  },
+  {
+    id:2, emoji:'✏️', label:'Portrait in 90s', cat:'CREATIVE CHALLENGE',
+    title:'Draw a Portrait in 90 Seconds',
+    desc:'Pick anyone nearby or use a reference. Any medium. 90 seconds on camera with visible timer.',
+    pts:25, verified:203, hype:1045,
+    colorA:'#0ff4c6', colorB:'#00b4d8', glowColor:'rgba(15,244,198,0.4)',
+    rules:['Reference subject must be visible in frame','Timer shown throughout — no cuts','Any drawing medium is valid','Portrait must include recognizable face features']
+  },
+  {
+    id:3, emoji:'🎸', label:'Learn a Riff Live', cat:'SKILL CHALLENGE',
+    title:'Learn & Play a Guitar Riff in One Take',
+    desc:'Someone names a song in the comments. You have 2 minutes to learn the main riff and play it back clean.',
+    pts:100, verified:21, hype:3400,
+    colorA:'#ffd60a', colorB:'#ff6b35', glowColor:'rgba(255,214,10,0.5)',
+    rules:['Song chosen by first comment on your video post — cannot be pre-arranged','2 minutes on screen to learn, then single performance take','Must name the song and commenter at the start','No looping pedals or pre-recorded backing']
+  },
+  {
+    id:4, emoji:'🏃', label:'100 Reps in 3 Min', cat:'FITNESS CHALLENGE',
+    title:'100 Bodyweight Reps in Under 3 Minutes',
+    desc:'Any combination of push-ups, squats, or burpees — just hit 100 reps before the timer expires.',
+    pts:60, verified:89, hype:1780,
+    colorA:'#ff2d55', colorB:'#7b2fff', glowColor:'rgba(255,45,85,0.45)',
+    rules:['Must call each rep aloud or use visible counter','Only push-ups, squats, or burpees count','Timer starts on your first rep','Full range of motion required — reviewers will check form']
+  },
+  {
+    id:5, emoji:'😂', label:'Rhyme-Only Convo', cat:'SOCIAL CHALLENGE',
+    title:'Hold a 2-Minute Conversation Speaking Only in Rhymes',
+    desc:'Find a willing participant. Every sentence you speak must end in a rhyme. Two minutes. No breaks.',
+    pts:40, verified:156, hype:4200,
+    colorA:'#a78bfa', colorB:'#7b2fff', glowColor:'rgba(167,139,250,0.45)',
+    rules:['Both speakers visible in frame','Conversation must be on a real topic — not nonsense filler','You must maintain rhyme scheme — the other person does not','Laughter does not count as a break — keep going']
+  }
+];
+
+// ─── CANVAS PHYSICS ENGINE ───────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W = canvas.width = window.innerWidth;
+let H = canvas.height = window.innerHeight;
+window.addEventListener('resize', () => {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  orbs.forEach((o,i) => { o.homeX = getHomeX(i); o.homeY = getHomeY(i); });
+});
+
+let mouse = { x: W/2, y: H/2, down: false };
+let introGone = false;
+let tick = 0;
+let hoveredOrb = null;
+let uploadedForChallenge = null;
+
+// ─── ORB PHYSICS ─────────────────────────────────────────────
+function getHomeX(i) {
+  const cols = Math.ceil(CHALLENGES.length / 2);
+  const col = i % cols;
+  return W * (0.15 + col * (0.7 / (cols - 1)));
+}
+function getHomeY(i) {
+  const cols = Math.ceil(CHALLENGES.length / 2);
+  const row = Math.floor(i / cols);
+  return H * (row === 0 ? 0.32 : 0.68);
+}
+
+const orbs = CHALLENGES.map((ch, i) => ({
+  ch,
+  x: getHomeX(i) + (Math.random()-0.5)*60,
+  y: getHomeY(i) + (Math.random()-0.5)*60,
+  homeX: getHomeX(i),
+  homeY: getHomeY(i),
+  vx: 0, vy: 0,
+  r: 38 + ch.pts * 0.3,
+  phase: Math.random() * Math.PI * 2,
+  glowPhase: Math.random() * Math.PI * 2,
+  hover: 0,  // 0–1
+  particles: Array.from({length:12}, () => ({
+    angle: Math.random() * Math.PI*2,
+    dist: 0, speed: Math.random()*0.02+0.008,
+    size: Math.random()*2+0.5, alpha: Math.random()
+  }))
+}));
+
+// ─── STAR FIELD ──────────────────────────────────────────────
+const stars = Array.from({length:200}, () => ({
+  x: Math.random()*W, y: Math.random()*H,
+  r: Math.random()*1.2,
+  alpha: Math.random()*0.6+0.1,
+  twinkle: Math.random()*Math.PI*2
+}));
+
+// ─── NEBULA BLOBS ────────────────────────────────────────────
+const nebulae = [
+  {x:0.1, y:0.2, c:'rgba(123,47,255,0.04)', r:0.45},
+  {x:0.85, y:0.75, c:'rgba(15,244,198,0.03)', r:0.4},
+  {x:0.5, y:0.5, c:'rgba(255,45,85,0.025)', r:0.5},
+  {x:0.2, y:0.8, c:'rgba(255,107,53,0.03)', r:0.35},
+];
+
+// ─── PARSE COLOR ─────────────────────────────────────────────
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return [r,g,b];
+}
+function parseRgba(c) {
+  const m = c.match(/[\d.]+/g);
+  return m ? [+m[0],+m[1],+m[2]] : [255,255,255];
+}
+
+// ─── DRAW LOOP ────────────────────────────────────────────────
+function draw() {
+  tick += 0.012;
+  ctx.clearRect(0,0,W,H);
+
+  // nebulae
+  nebulae.forEach(n => {
+    const bx = (n.x + Math.sin(tick*0.3)*0.05)*W;
+    const by = (n.y + Math.cos(tick*0.2)*0.04)*H;
+    const g = ctx.createRadialGradient(bx,by,0,bx,by,n.r*W);
+    g.addColorStop(0,n.c); g.addColorStop(1,'transparent');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(bx,by,n.r*W,0,Math.PI*2); ctx.fill();
+  });
+
+  // stars
+  stars.forEach(s => {
+    s.twinkle += 0.02;
+    const a = s.alpha*(0.6+0.4*Math.sin(s.twinkle));
+    ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+    ctx.fillStyle = `rgba(255,255,255,${a})`; ctx.fill();
+  });
+
+  // connection lines between nearby orbs (subtle)
+  orbs.forEach((a,i) => {
+    orbs.forEach((b,j) => {
+      if(j<=i) return;
+      const dx=b.x-a.x, dy=b.y-a.y, dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<220) {
+        const alpha = (1-dist/220)*0.06;
+        ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+        ctx.strokeStyle = `rgba(255,255,255,${alpha})`; ctx.lineWidth=1; ctx.stroke();
+      }
+    });
+  });
+
+  // ── orbs ──────────────────────────────────────────────────
+  const mouseInfluence = introGone ? 1 : 0;
+  hoveredOrb = null;
+
+  orbs.forEach((o,i) => {
+    o.phase += 0.015; o.glowPhase += 0.02;
+
+    // spring toward home
+    const fx = (o.homeX - o.x)*0.04;
+    const fy = (o.homeY - o.y)*0.04;
+
+    // cursor repulsion/attraction
+    const dx = o.x - mouse.x, dy = o.y - mouse.y;
+    const dist = Math.sqrt(dx*dx+dy*dy);
+    const influence = mouseInfluence * Math.max(0, 1 - dist/260);
+
+    // gentle magnetic pull toward cursor when close, push when very close
+    let mx=0,my=0;
+    if(dist>0) {
+      const factor = dist < 80 ? 0.5/dist : -0.3/dist;
+      mx = dx * factor * 40 * influence;
+      my = dy * factor * 40 * influence;
+    }
+
+    o.vx = (o.vx + fx + mx) * 0.88;
+    o.vy = (o.vy + fy + my) * 0.88;
+    o.x += o.vx; o.y += o.vy;
+
+    // hover detection
+    const hd = Math.sqrt((mouse.x-o.x)**2+(mouse.y-o.y)**2);
+    const isHovered = hd < o.r + 20;
+    if(isHovered) hoveredOrb = o;
+    o.hover += ((isHovered?1:0) - o.hover)*0.12;
+
+    const R = o.r + Math.sin(o.phase)*4 + o.hover*10;
+
+    // ── glow layers ──────────────────────────────────────────
+    const [r1,g1,b1] = hexToRgb(o.ch.colorA);
+    const [r2,g2,b2] = hexToRgb(o.ch.colorB);
+    const glowA = 0.12+o.hover*0.15+Math.sin(o.glowPhase)*0.04;
+    const glowB = 0.06+o.hover*0.1;
+
+    // outer halo
+    const halo = ctx.createRadialGradient(o.x,o.y,R*0.5,o.x,o.y,R*3);
+    halo.addColorStop(0,`rgba(${r1},${g1},${b1},${glowA})`);
+    halo.addColorStop(1,'transparent');
+    ctx.fillStyle=halo; ctx.beginPath(); ctx.arc(o.x,o.y,R*3,0,Math.PI*2); ctx.fill();
+
+    // mid glow
+    const mid = ctx.createRadialGradient(o.x,o.y,R*0.2,o.x,o.y,R*1.8);
+    mid.addColorStop(0,`rgba(${r2},${g2},${b2},${glowB})`);
+    mid.addColorStop(1,'transparent');
+    ctx.fillStyle=mid; ctx.beginPath(); ctx.arc(o.x,o.y,R*1.8,0,Math.PI*2); ctx.fill();
+
+    // ── orb body ────────────────────────────────────────────
+    const body = ctx.createRadialGradient(o.x-R*0.2,o.y-R*0.25,0,o.x,o.y,R);
+    body.addColorStop(0,`rgba(${r1},${g1},${b1},0.9)`);
+    body.addColorStop(0.5,`rgba(${r2},${g2},${b2},0.7)`);
+    body.addColorStop(1,`rgba(${r2},${g2},${b2},0.15)`);
+    ctx.fillStyle=body;
+    ctx.beginPath(); ctx.arc(o.x,o.y,R,0,Math.PI*2); ctx.fill();
+
+    // specular highlight
+    const spec = ctx.createRadialGradient(o.x-R*0.3,o.y-R*0.35,0,o.x-R*0.15,o.y-R*0.2,R*0.6);
+    spec.addColorStop(0,'rgba(255,255,255,0.35)');
+    spec.addColorStop(1,'transparent');
+    ctx.fillStyle=spec; ctx.beginPath(); ctx.arc(o.x,o.y,R,0,Math.PI*2); ctx.fill();
+
+    // orbital ring (difficulty)
+    const ringR = R*1.4 + Math.sin(o.phase*0.5)*3;
+    const rimAlpha = 0.15+o.hover*0.25;
+    ctx.beginPath(); ctx.arc(o.x,o.y,ringR,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(${r1},${g1},${b1},${rimAlpha})`; ctx.lineWidth=1.5; ctx.stroke();
+
+    // ── orbital particles ─────────────────────────────────
+    o.particles.forEach(p => {
+      p.angle += p.speed;
+      p.dist = R*1.5 + Math.sin(p.angle*3)*R*0.3;
+      const px = o.x + Math.cos(p.angle)*p.dist;
+      const py = o.y + Math.sin(p.angle)*p.dist;
+      const pa = p.alpha*(0.3+0.3*o.hover);
+      ctx.beginPath(); ctx.arc(px,py,p.size,0,Math.PI*2);
+      ctx.fillStyle=`rgba(${r1},${g1},${b1},${pa})`; ctx.fill();
+    });
+
+    // ── emoji label ────────────────────────────────────────
+    ctx.font = `${R*0.7}px serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.globalAlpha = 0.8 + o.hover*0.2;
+    ctx.fillText(o.ch.emoji, o.x, o.y);
+    ctx.globalAlpha = 1;
+  });
+
+  // cursor glow on canvas
+  if(introGone) {
+    const cg = ctx.createRadialGradient(mouse.x,mouse.y,0,mouse.x,mouse.y,80);
+    cg.addColorStop(0,'rgba(255,255,255,0.03)'); cg.addColorStop(1,'transparent');
+    ctx.fillStyle=cg; ctx.beginPath(); ctx.arc(mouse.x,mouse.y,80,0,Math.PI*2); ctx.fill();
+  }
+
+  updateLabels();
+  requestAnimationFrame(draw);
+}
+
+// ─── ORB LABELS ──────────────────────────────────────────────
+const labelEls = orbs.map((o,i) => {
+  const el = document.createElement('div');
+  el.className='orb-label'; el.innerHTML=`<div class="pts">${o.ch.pts} pts</div><div class="name">${o.ch.label}</div>`;
+  el.style.opacity='0'; document.body.appendChild(el); return el;
+});
+
+function updateLabels() {
+  orbs.forEach((o,i) => {
+    const lbl = labelEls[i];
+    const t = o.hover;
+    lbl.style.left = o.x+'px';
+    lbl.style.top = (o.y + o.r*1.9 + Math.sin(o.phase)*4)+'px';
+    lbl.style.opacity = Math.min(1, t*2).toFixed(2);
+    lbl.style.transform = `translate(-50%, -50%) translateY(${(1-t)*8}px)`;
+  });
+}
+
+// ─── MOUSE / TOUCH ───────────────────────────────────────────
+const cursorEl = document.getElementById('cursor');
+const c1 = cursorEl.querySelector('.c1');
+const c2 = cursorEl.querySelector('.c2');
+const c3 = cursorEl.querySelector('.c3');
+let cx=W/2, cy=H/2, tx=W/2, ty=H/2;
+let c2x=W/2, c2y=H/2, c3x=W/2, c3y=H/2;
+
+document.addEventListener('mousemove', e => {
+  tx = e.clientX; ty = e.clientY;
+  mouse.x = e.clientX; mouse.y = e.clientY;
+  if(!introGone && (Math.abs(tx-W/2)>30 || Math.abs(ty-H/2)>30)) dismissIntro();
+  document.body.classList.toggle('hovering', !!hoveredOrb);
+});
+
+document.addEventListener('mousedown', () => { mouse.down=true; document.body.classList.add('clicking'); });
+document.addEventListener('mouseup', () => { mouse.down=false; document.body.classList.remove('clicking'); });
+
+document.addEventListener('click', e => {
+  // re-check at click time — don't rely on stale draw-loop variable
+  const clicked = orbs.find(o => {
+    const dx = e.clientX - o.x, dy = e.clientY - o.y;
+    return Math.sqrt(dx*dx+dy*dy) < o.r + 24;
+  });
+  if(clicked) openChallenge(clicked.ch);
+});
+
+// smooth cursor lag
+function animCursor() {
+  cx += (tx-cx)*0.15; cy += (ty-cy)*0.15;
+  c2x += (tx-c2x)*0.1; c2y += (ty-c2y)*0.1;
+  c3x += (tx-c3x)*0.07; c3y += (ty-c3y)*0.07;
+  c1.style.left=cx+'px'; c1.style.top=cy+'px';
+  c2.style.left=c2x+'px'; c2.style.top=c2y+'px';
+  c3.style.left=c3x+'px'; c3.style.top=c3y+'px';
+  requestAnimationFrame(animCursor);
+}
+animCursor();
+
+// touch support
+document.addEventListener('touchmove', e => {
+  const t = e.touches[0];
+  mouse.x = t.clientX; mouse.y = t.clientY;
+  if(!introGone) dismissIntro();
+}, {passive:true});
+document.addEventListener('touchend', e => {
+  if(hoveredOrb) openChallenge(hoveredOrb.ch);
+});
+
+// ─── INTRO DISMISS ───────────────────────────────────────────
+function dismissIntro() {
+  introGone = true;
+  document.getElementById('intro').classList.add('hidden');
+  setTimeout(() => document.getElementById('hints').classList.add('show'), 1200);
+}
+setTimeout(dismissIntro, 4000);
+
+// ─── CHALLENGE PANEL ─────────────────────────────────────────
+let activeChallenge = null;
+function openChallenge(ch) {
+  activeChallenge = ch;
+  const view = document.getElementById('challenge-view');
+  document.getElementById('ch-emoji').textContent = ch.emoji;
+  document.getElementById('ch-cat').textContent = ch.cat;
+  document.getElementById('ch-title').textContent = ch.title;
+  document.getElementById('ch-desc').textContent = ch.desc;
+  document.getElementById('ch-pts').textContent = ch.pts;
+  document.getElementById('ch-verified').textContent = ch.verified;
+  document.getElementById('ch-hype').textContent = ch.hype.toLocaleString();
+  document.getElementById('ch-emoji').style.background =
+    `radial-gradient(circle,${ch.colorA}40,${ch.colorB}20)`;
+  document.getElementById('ch-emoji').style.boxShadow = `0 0 60px ${ch.glowColor}`;
+
+  const accept = document.getElementById('ch-accept');
+  accept.style.setProperty('--orb-a', ch.colorA);
+  accept.style.setProperty('--orb-b', ch.colorB);
+  view.style.setProperty('--orb-color', ch.colorA);
+  view.style.setProperty('--orb-glow', ch.glowColor);
+
+  const rulesEl = document.getElementById('ch-rules');
+  rulesEl.innerHTML = ch.rules.map(r=>`<div class="ch-rule"><span>→</span>${r}</div>`).join('');
+
+  view.classList.add('open');
+}
+function closeChallenge() { document.getElementById('challenge-view').classList.remove('open'); }
+
+function goSubmit() {
+  closeChallenge();
+  openSubmit();
+}
+
+// ─── SUBMIT PANEL ─────────────────────────────────────────────
+let checkCount = 0;
+let hasUpload = false;
+
+function openSubmit() {
+  document.getElementById('submit-view').classList.add('open');
+  if(activeChallenge) document.getElementById('submit-task-name').textContent = activeChallenge.title;
+  // reset
+  checkCount=0; hasUpload=false;
+  document.querySelectorAll('.chk').forEach(c=>{c.classList.remove('on');c.querySelector('.chk-box').textContent='';});
+  document.getElementById('portal-icon').textContent='🎬';
+  document.getElementById('submit-btn').classList.remove('ready');
+}
+function closeSubmit() { document.getElementById('submit-view').classList.remove('open'); }
+
+function toggleChk(el) {
+  const on = el.classList.toggle('on');
+  el.querySelector('.chk-box').textContent = on ? '✓' : '';
+  checkCount = document.querySelectorAll('.chk.on').length;
+  checkReady();
+}
+
+function triggerUpload() {
+  if(hasUpload) return;
+  const icon = document.getElementById('portal-icon');
+  let p = 0;
+  const frames = ['🌀','⚡','🔮','✨','📡'];
+  const iv = setInterval(() => {
+    p += Math.random()*15+5;
+    icon.textContent = frames[Math.floor(Math.random()*frames.length)];
+    if(p>=100) {
+      clearInterval(iv);
+      hasUpload=true;
+      icon.textContent='✅';
+      showToast('🎬 Video locked in — fill out the checklist');
+      checkReady();
+    }
+  }, 200);
+}
+
+function checkReady() {
+  const btn = document.getElementById('submit-btn');
+  btn.classList.toggle('ready', checkCount===3 && hasUpload);
+}
+
+function handleSubmit() {
+  closeSubmit();
+  const pts = activeChallenge ? activeChallenge.pts : 75;
+  document.getElementById('s-pts').textContent = `+${pts} pts pending`;
+  document.getElementById('success').classList.add('show');
+}
+function closeSuccess() {
+  document.getElementById('success').classList.remove('show');
+  showToast('🔥 Submission is in the queue — good luck');
+}
+
+// ─── LEADERBOARD ─────────────────────────────────────────────
+function openLB() { document.getElementById('lb-view').classList.add('open'); }
+function closeLB() { document.getElementById('lb-view').classList.remove('open'); }
+
+// ─── TOAST ───────────────────────────────────────────────────
+let toastT;
+function showToast(msg) {
+  document.getElementById('toast-inner').textContent=msg;
+  const t=document.getElementById('toast');
+  t.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2800);
+}
+
+// keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if(e.key==='Escape') { closeChallenge(); closeSubmit(); closeLB(); }
+  if(e.key==='l'||e.key==='L') openLB();
+});
+
+// ─── START ───────────────────────────────────────────────────
+draw();
+</script>
+</body>
+</html>
