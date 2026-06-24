@@ -240,6 +240,89 @@ Consequences.**
 - **Consequences:** two code paths plus a sync→async handoff mid-round; `K` and the lazy-judging
   penalty need empirical tuning; the points ledger needs `pending|confirmed|void` states (§6.4).
 
+### ADR-012 — Curated-catalog-first + challenge approval gate + dangerous-dare taxonomy
+- **Status:** Accepted
+- **Context:** Trust & Safety (Problem #2) is the second existential risk. The core loop
+  ("do a dare, film it") is the highest-risk content category, *amplified* by points/prize/
+  leaderboard and aimed at a young audience. The highest-leverage lever is **who decides what a
+  dare can be.**
+- **Decision:** Phase 1 is a **platform-curated catalog** — vetted authors create challenges;
+  users *do* them, they don't *invent* them. Challenge lifecycle:
+  `proposed → safety-review → approved | rejected → live → retired`. Every proposed challenge is
+  scored by a **dangerous-dare classifier** against a banned-category taxonomy (physical harm,
+  self-harm, illegal acts, sexual, targeting minors, animal cruelty, harassment-by-design) and
+  routed by **risk tier**: auto-reject / human-review / auto-approve + spot-check. Each challenge
+  carries structured **risk metadata** (physical-risk, `requires_other_people`, location-risk,
+  age-rating). User-proposed dares open in Phase 2 behind the same gate + a reputation requirement
+  + community flagging.
+- **Rationale / data points:** this controls the danger surface *at the source* — ~80% of the
+  safety posture. Challenge virality is *driven* by danger (blackout, Tide-Pod, "devious licks"),
+  and paying for completion + status accelerates it; controlling authorship is the only durable
+  defense. Aligns with ADR-003 (objective-first).
+- **Alternatives considered:** open UGC dares from day one (rejected — rebuilds unmoderated
+  challenge chaos); post-hoc moderation only (rejected — reactive, harm already done).
+- **Consequences:** Challenge gains lifecycle + risk metadata; T&S service owns the approval
+  workflow + taxonomy; the launch catalog is intentionally narrow.
+
+### ADR-013 — Content-safety screening at submission (extends Layer 0; never auto-publish flagged)
+- **Status:** Accepted
+- **Context:** A safe challenge can still produce unsafe footage — nudity, violence, bystander
+  PII, a minor in danger, self-harm/distress.
+- **Decision:** Extend the verification Layer-0 gate with automated content moderation on every
+  submission (sexual/nudity, graphic violence/weapons; minor-safety signals; PII/bystander faces
+  & plates/addresses → blur or reject; self-harm/distress → route to crisis resources, not points).
+  **Flagged content is blocked from the public + jury flow and escalated to humans — never
+  auto-published (fail-closed).**
+- **Rationale / data points:** the fail-closed rule prevents the catastrophic case; reuses the
+  existing media pipeline + Layer-0 entry point (low marginal cost); also protects *jurors* from
+  being shown harmful content.
+- **Alternatives considered:** moderate only on report (rejected — harmful content goes live
+  first); moderate only at jury time (rejected — too late, exposes jurors).
+- **Consequences:** Media Pipeline runs moderation ML; Submission gains a `safety_state`; flagged
+  items enter a moderation queue.
+
+### ADR-014 — Dares constrained to the vetted catalog + consent & rate-limits (conduct safety)
+- **Status:** Accepted
+- **Context:** Stake-dares and "dare someone" are a harassment vector (humiliation, pile-ons).
+- **Decision:** A user may only dare another to a **vetted catalog challenge** — never a free-text
+  instruction (Phase 1). Plus consent to receive dares (off for non-followers by default),
+  rate-limited dares-to-one-person, and block/mute.
+- **Rationale / data points:** constraining dares to vetted challenges **structurally eliminates**
+  free-text harassment in Phase 1 — you cannot weaponise a juggling challenge. Cheap, total, and
+  reuses the catalog.
+- **Alternatives considered:** free-text dares with moderation (rejected — moderation can't keep
+  pace with targeted, interpersonal abuse).
+- **Consequences:** `Dare` references a `challenge_id` (already modelled); add consent + rate-limit
+  user settings.
+
+### ADR-015 — Age assurance & minor-safety defaults
+- **Status:** Accepted
+- **Context:** The audience skews young; minors + dares + video + money is the most heavily
+  regulated combination (COPPA, UK AADC, EU DSA).
+- **Decision:** Age assurance at signup; minor accounts default to **curated-only, no cash prize,
+  limited dares**, and stricter content defaults.
+- **Rationale / data points:** regulatory necessity + harm reduction — removing cash for minors
+  removes the worst incentive to escalate.
+- **Alternatives considered:** treat all users identically (rejected — legal and ethical
+  non-starter).
+- **Consequences:** `User` carries an `age_band`; gating logic spans challenge eligibility,
+  prizes, and dares.
+
+### ADR-016 — Reporting & escalation reusing jury + reputation, with staff SLAs
+- **Status:** Accepted
+- **Context:** No gate is perfect; we need a fast path for what slips through.
+- **Decision:** Every surface (challenge, submission, user, dare) is reportable → triage queue.
+  Reuse jury + reputation for community triage; **imminent-harm categories bypass the community and
+  go straight to staff moderators with a tight SLA (e.g. < 1h).** Versioned **policy-as-data**,
+  full audit log, and appeals.
+- **Rationale / data points:** reuses existing trust infrastructure (low cost); the imminent-harm
+  fast lane is the difference between an incident and a tragedy; policy-as-data keeps decisions
+  auditable and evolvable without code deploys.
+- **Alternatives considered:** staff-only moderation (rejected — doesn't scale); community-only
+  (rejected — too slow for imminent harm).
+- **Consequences:** T&S service owns the triage queue, moderator console, action taxonomy, SLAs,
+  appeals, and safety telemetry.
+
 ---
 
 ## 5. Product model
@@ -355,6 +438,27 @@ is the natural migration path to fast verdicts as the pool grows.
 | Jury-to-play ratio `K` | `≥ N` | ADR-011 |
 | Apprentice graduation | 20 correct shadow votes @ ≥80% | ADR-009 |
 
+### 5.9 Safety model — surfaces & challenge lifecycle (see ADR-012…016)
+
+Three safety surfaces, each gated independently:
+
+- **A. Challenge safety** — is the *dare itself* dangerous? Prevention at the source via a curated
+  catalog + approval gate (ADR-012).
+- **B. Content safety** — is the *video* harmful (nudity, violence, bystander PII, a minor in
+  danger, self-harm)? Detection at intake, extending verification Layer 0 (ADR-013).
+- **C. Conduct safety** — is a *dare* being weaponised against a person? Neutralised by limiting
+  dares to vetted challenges + consent/rate-limits (ADR-014).
+
+**Challenge lifecycle:**
+```
+proposed → safety-review ─approve→ live → retired
+                  └─reject→ rejected
+```
+Risk-tier routing: auto-reject (clearly dangerous) / human-review (borderline) / auto-approve +
+spot-check (clearly benign). Phase 1 = platform-curated catalog; Phase 2 opens user proposals
+through the same gate + a reputation requirement. Minor accounts (ADR-015) see only age-rated
+challenges and never a cash prize.
+
 ---
 
 ## 6. Backend architecture (proposed)
@@ -399,16 +503,18 @@ Submission accepted
 - **Social graph** — relational now; a graph store later if collusion detection needs it.
 
 ### 6.4 Data model sketch (core entities)
-- `User(id, handle, reputation, created_at)`
-- `Challenge(id, title, category, verification_type, rules_json, season_id, status)`
-- `Submission(id, user_id, challenge_id, video_blob_ref, phash, state, created_at)`
+- `User(id, handle, reputation, age_band, created_at)`
+- `Challenge(id, title, category, verification_type, rules_json, season_id, lifecycle_state, risk_tier, risk_meta_json{physical_risk, requires_other_people, location_risk, age_rating}, status)`
+- `Submission(id, user_id, challenge_id, video_blob_ref, phash, state, safety_state[pending|clear|flagged|blocked], created_at)`
 - `JuryRound(id, submission_id, panel_size, mode[sync|async], commit_deadline, reveal_deadline, opened_at, status)`
 - `Vote(id, jury_round_id, juror_id, commit_hash, revealed_verdict, failed_rule_id, salt, revealed_at, matched_consensus)`
 - `ShadowVote(id, submission_id, apprentice_id, verdict, matched_consensus, created_at)`  // apprenticeship (ADR-009)
 - `ReputationEvent(id, user_id, delta, reason, ref_id, created_at)`  // append-only; balance = Σ deltas + decay
 - `LedgerEntry(id, user_id, season_id, delta, reason, ref_id, dedupe_key, status[pending|confirmed|void], created_at)`
 - `Dare(id, from_user_id, to_user_id|broadcast, challenge_id, stake_points, status)`
-- `Report(id, target_type, target_id, reporter_id, reason, status)`
+- `Report(id, target_type, target_id, reporter_id, category, severity, status, escalation_state, created_at)`
+- `ModerationAction(id, target_type, target_id, moderator_id, action[warn|remove|suspend|ban], reason, created_at)`  // ADR-016
+- `ChallengeProposal(id, author_id, draft_json, classifier_score, review_state, reviewer_id, created_at)`  // Phase 2 UGC (ADR-012)
 
 ### 6.5 Integrity & anti-abuse (cross-cutting)
 - Append-only, idempotent ledger; every state transition audited.
@@ -430,8 +536,11 @@ leaderboard, and the submit "rite." Minimal logic change to `option2.html`.
   reputation. *Residual:* tune `K` and the lazy-judging quality penalty.
 - ~~**Verification timing**~~ — **decided (ADR-011):** hybrid async-first + optimistic pending.
   *Residual:* sync fast-path fill timeout.
+- ~~**Trust & Safety**~~ — **decided (ADR-012…016):** curated-catalog-first + approval gate &
+  dangerous-dare taxonomy; submission content screening (fail-closed); dares constrained to vetted
+  challenges; age/minor defaults; reporting/escalation with staff SLAs. *Residual:* taxonomy
+  contents, moderator-console UX, SLA targets.
 - **Payout / KYC:** only if the season prize is real money. Anti-fraud + identity verification.
-- **Moderation tooling:** human review console, escalation SLAs.
 - **Platform:** mobile-first (native?) vs web — affects on-device ML for Layer 0.
 - **Monetization:** sponsored challenges, premium seasons, brand prize pools.
 
@@ -443,3 +552,4 @@ leaderboard, and the submit "rite." Minimal logic change to `option2.html`.
 |------|--------|
 | 2026-06-24 | Initial draft. Core insight + Problems #1–6 + ADR-001…008 + product model + backend sketch. |
 | 2026-06-24 | Verification core locked: ADR-009 (reputation model), ADR-010 (jury engine + commit-reveal), ADR-011 (hybrid timing + optimistic pending + jury-to-play). Added §5.6–5.8 (flow walkthrough, timing model, parameters) and extended the §6.4 data model. |
+| 2026-06-24 | Trust & Safety locked: ADR-012 (curated-catalog-first + approval gate + dangerous-dare taxonomy), ADR-013 (submission content screening), ADR-014 (dares constrained to vetted catalog), ADR-015 (age assurance & minor defaults), ADR-016 (reporting/escalation reusing jury+reputation). Added §5.9 (safety surfaces + challenge lifecycle); extended the §6.4 data model. |
