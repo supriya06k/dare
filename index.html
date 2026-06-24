@@ -1341,5 +1341,84 @@ document.querySelectorAll('.cat-chip').forEach(chip => {
   });
 });
 </script>
+
+<!-- ── v0 backend wiring (vertical slice; DareApi, same-origin) ─────────────── -->
+<script>
+const API = ''; // same-origin: index.html is served by DareApi
+const KEY2ID = { juggle: 0, rap: 1, sketch: 2 }; // feed keys → backend challenge ids
+let curKey = 'juggle';
+
+// Track the selected challenge + reflect it on the submit screen.
+const _openDetail = openDetail;
+openDetail = function(id){
+  curKey = id;
+  const d = challengeData[id];
+  if (d) {
+    const ref = document.querySelector('#screen-submit .submit-task-ref');
+    if (ref) {
+      ref.querySelector('.task-ref-icon').textContent = d.emoji;
+      ref.querySelector('.task-ref-title').textContent = d.title;
+      ref.querySelector('.task-ref-pts').textContent = '⚡ ' + d.pts + ' if verified';
+    }
+  }
+  _openDetail(id);
+};
+
+// Real submission: POST submission → stub verify → show awarded Score/Coins.
+handleSubmit = async function(){
+  document.getElementById('success-overlay').classList.add('show');
+  const ptsEl = document.querySelector('#success-overlay .success-points');
+  const id = KEY2ID[curKey] ?? 0;
+  if (ptsEl) ptsEl.textContent = 'verifying…';
+  try {
+    const sres = await fetch(API + '/api/submissions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challengeId: id })
+    });
+    if (!sres.ok) throw new Error('submit ' + sres.status);
+    const sub = await sres.json();
+    const vres = await fetch(API + '/api/submissions/' + sub.id + '/verify', { method: 'POST' });
+    if (!vres.ok) throw new Error('verify ' + vres.status);
+    const v = await vres.json();
+    const me = await (await fetch(API + '/api/me')).json();
+    if (ptsEl) ptsEl.textContent = '+' + v.awarded.score + ' pts — verified ✓  (season total ' + me.score + ')';
+    showToast('✅ Verified · +' + v.awarded.score + ' Score · +' + v.awarded.coins + ' Coins');
+    await renderLeaderboard();
+  } catch (e) {
+    if (ptsEl) ptsEl.textContent = '⚠ backend offline — not recorded';
+    showToast('⚠ could not reach backend');
+  }
+};
+
+// Live leaderboard from the append-only ledger (podium top-3 + the list).
+async function renderLeaderboard(){
+  try {
+    const data = await (await fetch(API + '/api/leaderboard')).json();
+    const av = h => (h[0] || '?').toUpperCase();
+    const setPod = (cls, r) => {
+      if (!r) return;
+      const card = document.querySelector('.podium-card.' + cls);
+      if (!card) return;
+      card.querySelector('.podium-handle').textContent = '@' + r.handle;
+      card.querySelector('.podium-pts').innerHTML = r.score + ' <span>pts</span>';
+    };
+    setPod('rank-1', data[0]); setPod('rank-2', data[1]); setPod('rank-3', data[2]);
+    const list = document.querySelector('#screen-leaderboard .lb-list');
+    if (list) {
+      list.innerHTML = data.slice(3).map((r, i) =>
+        '<div class="lb-entry"' + (r.isMe ? ' style="border-color:rgba(15,244,198,0.3);background:rgba(15,244,198,0.05)"' : '') + '>' +
+          '<div class="lb-rank">' + (i + 4) + '</div>' +
+          '<div class="lb-avatar" style="background:linear-gradient(135deg,#7b2fff,#4a00e0)">' + av(r.handle) + '</div>' +
+          '<div class="lb-info"><div class="lb-handle">' + (r.isMe ? 'You' : '@' + r.handle) + '</div>' +
+            '<div class="lb-stats">' + (r.isMe ? "that's you" : 'crowd-verified') + '</div></div>' +
+          '<div class="lb-points">' + r.score + ' <small>pts</small></div>' +
+        '</div>'
+      ).join('');
+    }
+  } catch (e) { /* backend offline — keep the static design */ }
+}
+
+renderLeaderboard();
+</script>
 </body>
 </html>

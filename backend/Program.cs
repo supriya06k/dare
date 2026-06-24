@@ -24,7 +24,7 @@ using (var scope = app.Services.CreateScope())
 // ── Static prototype (served same-origin so the canvas app can call /api) ──────
 var repoRoot = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, ".."));
 var files = new PhysicalFileProvider(repoRoot);
-app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files, DefaultFileNames = new List<string> { "option2.html" } });
+app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files, DefaultFileNames = new List<string> { "index.html" } });
 app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
