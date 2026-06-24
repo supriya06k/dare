@@ -4,6 +4,7 @@
 **Type:** Single-file HTML/CSS/JS prototypes (no build tools, no dependencies)  
 **Location:** Repository root (flat layout)  
 **PRD:** `PRD_Dare_and_Validate.docx` (external, not included in this repo)
+**Design rationale:** `DESIGN.md` (product + backend reasoning and decision log)
 
 ---
 
