@@ -2,8 +2,8 @@
 
 **Project:** Dare & Validate  
 **Type:** Single-file HTML/CSS/JS prototypes (no build tools, no dependencies)  
-**Location:** `/Users/supriyakumari/Documents/personal/dare-validate-ui/`  
-**PRD:** `../PRD_Dare_and_Validate.docx`
+**Location:** Repository root (flat layout)  
+**PRD:** `PRD_Dare_and_Validate.docx` (external, not included in this repo)
 
 ---
 
@@ -379,7 +379,7 @@ Original click handler checked `hoveredOrb` — a variable set inside the draw l
 ## Running Locally
 
 ```bash
-# from dare-validate-ui/
+# from the repository root
 python3 -m http.server 8080
 # open http://localhost:8080/option2.html
 ```
