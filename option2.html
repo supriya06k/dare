@@ -1482,5 +1482,68 @@ initStars();
 createLabels();
 loop();
 </script>
+
+<!-- ── v0 backend wiring (vertical slice; DareApi, same-origin) ─────────────── -->
+<script>
+const API = ''; // same-origin: option2.html is served by DareApi
+
+async function loadChallenges(){
+  try{
+    const res = await fetch(API + '/api/challenges');
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const list = await res.json();
+    // merge backend data into the in-place DARES objects (keep local rules/ver/hype)
+    list.forEach(s => { const d = DARES.find(x => x.id === s.id); if(d) Object.assign(d, s); });
+    if(typeof createLabels === 'function') createLabels();
+    showToast('✓ ' + list.length + ' challenges loaded from backend');
+  }catch(e){ showToast('⚠ backend offline — using local data'); }
+}
+
+// Real submission: POST submission -> stub verify -> show awarded Score/Coins.
+window.handleRite = async function(){
+  closeRite();
+  const d = activeD || DARES[0];
+  const ascPts = document.getElementById('asc-pts');
+  document.getElementById('ascend').classList.add('show');
+  ascPts.textContent = '+' + (d.pts||0) + ' pts pending…';
+  try{
+    const sres = await fetch(API + '/api/submissions', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ challengeId: d.id })
+    });
+    if(!sres.ok) throw new Error('submit ' + sres.status);
+    const sub = await sres.json();
+    const vres = await fetch(API + '/api/submissions/' + sub.id + '/verify', { method:'POST' });
+    if(!vres.ok) throw new Error('verify ' + vres.status);
+    const v = await vres.json();
+    const me = await (await fetch(API + '/api/me')).json();
+    ascPts.textContent = '+' + v.awarded.score + ' pts — verified ✓  (season total ' + me.score + ')';
+    showToast('✅ Verified · +' + v.awarded.score + ' Score · +' + v.awarded.coins + ' Coins');
+  }catch(e){
+    ascPts.textContent = '⚠ backend offline — not recorded';
+    showToast('⚠ could not reach backend');
+  }
+};
+
+// Live leaderboard from the ledger.
+window.openLB = async function(){
+  const lb = document.getElementById('lb');
+  lb.classList.add('open');
+  const rows = lb.querySelector('.lb-rows');
+  try{
+    const data = await (await fetch(API + '/api/leaderboard')).json();
+    rows.innerHTML = data.map((r,i) =>
+      '<div class="lbr' + (r.isMe ? ' me' : '') + '">' +
+        '<div class="lbr-n">' + (i+1) + '</div>' +
+        '<div class="lbr-av" style="background:linear-gradient(135deg,#0ff4c6,#7b2fff)">' + (r.handle[0]||'?').toUpperCase() + '</div>' +
+        '<div class="lbr-m"><div class="lbr-h">@' + r.handle + '</div><div class="lbr-s">' + (r.isMe ? "that's you" : 'crowd-verified') + '</div></div>' +
+        '<div class="lbr-p">' + r.score + ' <small>pts</small></div>' +
+      '</div>'
+    ).join('');
+  }catch(e){ showToast('⚠ leaderboard offline'); }
+};
+
+loadChallenges();
+</script>
 </body>
 </html>
