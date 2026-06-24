@@ -323,15 +323,90 @@ Consequences.**
 - **Consequences:** T&S service owns the triage queue, moderator console, action taxonomy, SLAs,
   appeals, and safety telemetry.
 
+### ADR-017 — Non-cashable currency + prize-as-contest (the gambling firewall)
+- **Status:** Accepted
+- **Context:** A cash prize alongside stakeable points risks constituting **unlicensed gambling**
+  (consideration + outcome + prize of value) → illegal in most jurisdictions + app-store ban.
+  Same existential tier as safety.
+- **Decision:** In-app currencies (Score, Coins) are **non-cashable** — they never convert to
+  money. Staking Coins is therefore a *status wager*, not gambling. The season prize is a
+  **platform-funded skill contest / sweepstakes** awarded to top ranks — **not** a points→cash
+  conversion. Money only ever flows *in* (cosmetics, sponsorship); never out as a cash-out.
+- **Rationale / data points:** removing the "prize of monetary value" and "cash-out" prongs is the
+  structural firewall against gambling + money-transmitter law; platform-funded skill-contest
+  prizes are a different, manageable regime (contest/sweepstakes terms). *Risk reduction, not legal
+  advice — a real launch needs counsel.*
+- **Alternatives considered:** cashable points (rejected — gambling / money-transmitter exposure,
+  app-store ban); points→cash on dares (rejected — that is wagering).
+- **Consequences:** monetization cannot rely on cash-out; the prize runs under contest rules with
+  winner eligibility + KYC at payout time only.
+
+### ADR-018 — Separate Score (rank, earned-only) from Coins (spendable wallet)
+- **Status:** Accepted (refines ADR-004)
+- **Context:** If the currency that *ranks* the leaderboard is also transferable via stakes,
+  players wash-trade to **buy rank** (A repeatedly "loses" to friend B).
+- **Decision:** Split the points-family into **Score** (earned only via verified completions,
+  **non-transferable**, ranks the leaderboard, resets per season) and **Coins** (spendable/
+  stakeable wallet; sources = completions/events; sinks = stakes/entry fees/cosmetics). Reputation
+  (ADR-009) remains the separate trust currency.
+- **Rationale / data points:** rank then reflects merit, not transfers — same separation-of-roles
+  logic as ADR-004. Cost: a third currency adds UX/cognitive load, accepted in exchange for an
+  honest leaderboard.
+- **Alternatives considered:** single points currency (rejected — buy-rank wash trading);
+  transferable Score (rejected — same hole).
+- **Consequences:** `LedgerEntry` carries `currency[score|coins]`; rank queries read Score only;
+  stakes touch Coins only.
+
+### ADR-019 — Dare-stake lifecycle & escrow; bounty-first
+- **Status:** Accepted
+- **Context:** ADR-002's stake mechanic needs concrete escrow/payout/anti-griefing rules; staking
+  is also a coercion vector (ADR-014).
+- **Decision:**
+  - *"Dare someone"* uses a **bounty model**: the challenger funds a Coins bounty; the
+    **challengee risks nothing** and completes to win it. Opt-in **mutual-stake duels** (both
+    stake, winner takes the pot) for willing rivals only.
+  - **Escrow state machine:** `created (funds held) → pending → accepted → active → submitted →
+    [graph-excluded jury] → resolved → payout | declined/expired/timeout → refund`.
+  - Wins are still gated by the normal verification jury — a win cannot be handed.
+  - Consent + rate-limits per ADR-014.
+- **Rationale / data points:** bounty avoids coercion/griefing (no one can be drained by
+  spam-dares); jury-gated wins + earned-only Score (ADR-018) stop wash payouts from moving rank;
+  escrow with refund-on-timeout protects funds.
+- **Alternatives considered:** mutual-stake as default (rejected — coercive/griefable);
+  self-claimed auto-win (rejected — bypasses verification).
+- **Consequences:** `Dare` gains mode/bounty/escrow/expiry fields; add `EscrowHold`; ties to the
+  Coins ledger.
+
+### ADR-020 — Anti-inflation & anti-farming
+- **Status:** Accepted
+- **Context:** Minting (completion rewards) without controls inflates the currency and rewards
+  mindless grinding.
+- **Decision:** Completion minting is **difficulty-weighted + diminishing-returns (per challenge
+  per period) + rate-limited**; defined **sinks** (stake escrow/transfer, entry-fee and cosmetic
+  burns); Score is earned-only and **seasonal (resets)**; the offline collusion job flags repeated
+  A↔B Coin transfers (wash-stake rings).
+- **Rationale / data points:** balancing sources against sinks keeps currency scarce and rank
+  meaningful; seasonal reset stops permanent hoarding from distorting competition; collusion flags
+  catch the transfer channel that staking introduces.
+- **Alternatives considered:** flat rewards with no sinks (rejected — inflation + grind-to-win).
+- **Consequences:** the reward function is difficulty/rate aware; sink mechanics required; the
+  §6.5 collusion job extends to Coin transfers.
+
 ---
 
 ## 5. Product model
 
-### 5.1 Currencies
-- **Points** — seasonal leaderboard score; earned on verified completions; can be staked on
-  dares; resets each season.
-- **Reputation** — persistent trust weight; earned by being a correct juror and a clean doer;
-  drives juror selection weighting and anti-abuse thresholds.
+### 5.1 Currencies (refined by ADR-018)
+Three distinct currencies, separated by role:
+- **Score** — merit/rank. Earned **only** via verified completions (difficulty-weighted),
+  **non-transferable**, ranks the leaderboard, resets each season.
+- **Coins** — spendable wallet. Sources: completions / events. Sinks: dare stakes (escrow), entry
+  fees, cosmetics. Stakeable and transferable (the economy layer), but **non-cashable** (ADR-017).
+- **Reputation** — persistent trust weight (ADR-009); not spendable, not rank; drives juror
+  selection and anti-abuse.
+
+(Earlier mentions of "points" map onto Score + Coins; ADR-004's points-vs-reputation split is
+preserved — Score and Coins are both points-family, distinct from Reputation.)
 
 ### 5.2 Submission lifecycle
 ```
@@ -459,6 +534,33 @@ spot-check (clearly benign). Phase 1 = platform-curated catalog; Phase 2 opens u
 through the same gate + a reputation requirement. Minor accounts (ADR-015) see only age-rated
 challenges and never a cash prize.
 
+### 5.10 Economy model — sources, sinks & the dare-stake loop (see ADR-017…020)
+
+**Gambling firewall (ADR-017):** in-app currencies are **non-cashable**; staking Coins is a status
+wager, not gambling; the season prize is a **platform-funded skill contest**, never a points→cash
+conversion. Money only flows *in* (cosmetics/sponsorship), never out.
+
+**Sources (mint) vs sinks (burn/escrow):**
+
+| Flow | Currency | Mechanism |
+|------|----------|-----------|
+| Source | Score + Coins | verified completion — difficulty-weighted, diminishing, rate-limited (ADR-020) |
+| Sink | Coins | dare stake (escrowed → transferred to winner; zero-sum) |
+| Sink | Coins | entry fees / cosmetics (burned) |
+| (neither) | Score | earned-only, non-transferable — never a sink/transfer (protects rank) |
+
+**Dare-stake loop (bounty-first, ADR-019):**
+```
+created (challenger funds bounty in Coins → escrow)
+  → pending → accepted → active → submitted
+       → [graph-excluded verification jury] → resolved → payout to winner
+  → declined / expired / timeout → refund
+```
+"Dare someone" = challenger funds a bounty, **challengee risks nothing**. Opt-in **mutual-stake
+duels** (both stake, winner takes the pot) for willing rivals. Wins are always jury-gated (no
+handing a win); earned-only Score means stake transfers never move rank; the offline collusion job
+flags A↔B wash-stake rings.
+
 ---
 
 ## 6. Backend architecture (proposed)
@@ -510,8 +612,9 @@ Submission accepted
 - `Vote(id, jury_round_id, juror_id, commit_hash, revealed_verdict, failed_rule_id, salt, revealed_at, matched_consensus)`
 - `ShadowVote(id, submission_id, apprentice_id, verdict, matched_consensus, created_at)`  // apprenticeship (ADR-009)
 - `ReputationEvent(id, user_id, delta, reason, ref_id, created_at)`  // append-only; balance = Σ deltas + decay
-- `LedgerEntry(id, user_id, season_id, delta, reason, ref_id, dedupe_key, status[pending|confirmed|void], created_at)`
-- `Dare(id, from_user_id, to_user_id|broadcast, challenge_id, stake_points, status)`
+- `LedgerEntry(id, user_id, season_id, currency[score|coins], delta, reason, ref_id, dedupe_key, status[pending|confirmed|void], created_at)`  // rank reads score only; stakes touch coins
+- `Dare(id, from_user_id, to_user_id|broadcast, challenge_id, mode[bounty|duel], bounty_coins, escrow_state, resolution, expires_at, status)`
+- `EscrowHold(id, dare_id, user_id, amount_coins, state[held|released|refunded], created_at)`  // ADR-019
 - `Report(id, target_type, target_id, reporter_id, category, severity, status, escalation_state, created_at)`
 - `ModerationAction(id, target_type, target_id, moderator_id, action[warn|remove|suspend|ban], reason, created_at)`  // ADR-016
 - `ChallengeProposal(id, author_id, draft_json, classifier_score, review_state, reviewer_id, created_at)`  // Phase 2 UGC (ADR-012)
@@ -540,9 +643,13 @@ leaderboard, and the submit "rite." Minimal logic change to `option2.html`.
   dangerous-dare taxonomy; submission content screening (fail-closed); dares constrained to vetted
   challenges; age/minor defaults; reporting/escalation with staff SLAs. *Residual:* taxonomy
   contents, moderator-console UX, SLA targets.
-- **Payout / KYC:** only if the season prize is real money. Anti-fraud + identity verification.
+- ~~**Economy**~~ — **decided (ADR-017…020):** non-cashable Score/Coins, prize-as-contest,
+  bounty-first dare escrow, anti-inflation. *Residual:* exact reward curve, fee/cosmetic sinks.
+- **Prize payout / KYC:** the platform-funded contest prize (ADR-017) still needs winner
+  eligibility + KYC/anti-fraud at payout time.
 - **Platform:** mobile-first (native?) vs web — affects on-device ML for Layer 0.
-- **Monetization:** sponsored challenges, premium seasons, brand prize pools.
+- **Monetization:** in-flows only (cosmetics, sponsored challenges, brand prize pools) — never
+  cash-out (ADR-017).
 
 ---
 
@@ -553,3 +660,4 @@ leaderboard, and the submit "rite." Minimal logic change to `option2.html`.
 | 2026-06-24 | Initial draft. Core insight + Problems #1–6 + ADR-001…008 + product model + backend sketch. |
 | 2026-06-24 | Verification core locked: ADR-009 (reputation model), ADR-010 (jury engine + commit-reveal), ADR-011 (hybrid timing + optimistic pending + jury-to-play). Added §5.6–5.8 (flow walkthrough, timing model, parameters) and extended the §6.4 data model. |
 | 2026-06-24 | Trust & Safety locked: ADR-012 (curated-catalog-first + approval gate + dangerous-dare taxonomy), ADR-013 (submission content screening), ADR-014 (dares constrained to vetted catalog), ADR-015 (age assurance & minor defaults), ADR-016 (reporting/escalation reusing jury+reputation). Added §5.9 (safety surfaces + challenge lifecycle); extended the §6.4 data model. |
+| 2026-06-24 | Economy locked: ADR-017 (non-cashable currency + prize-as-contest gambling firewall), ADR-018 (Score vs Coins split), ADR-019 (bounty-first dare-stake escrow lifecycle), ADR-020 (anti-inflation/anti-farming). Added §5.10 (economy model) + §5.1 currency refinement; extended the data model (ledger `currency`, Dare escrow fields, EscrowHold). |
