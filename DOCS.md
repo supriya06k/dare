@@ -395,3 +395,8 @@ Or open `option2.html` directly as a `file://` URL — no server required, no ex
 - Auth / user accounts — "You — unranked" is a placeholder
 - Points persistence — ascension screen resets on page reload
 - Real-time hype/ver counts — hardcoded in `DARES` array
+
+---
+
+<!-- push-identity test: 2026-06-24 -->
+
