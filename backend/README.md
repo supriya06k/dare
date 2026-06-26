@@ -1,47 +1,68 @@
-# DareApi — v0 vertical slice
+# DareApi — Season 4 backend
 
-A thin, real, end-to-end slice of the Dare & Validate loop, backing the `option2.html`
-prototype. Proves the architecture shape from `DESIGN.md`; the hard parts are deliberately
-**stubbed** (no auth, no video, no jury/ML — see "Stubbed" below).
+The backend behind the **Season 4 UI** (`drop-season4-ui/dare-validate-ui`, Next.js). It serves the
+feed, the vote-to-earn loop, the season prize pool, the leaderboard, the profile, and posting a
+dare. Amounts are non-cashable **Coins** (whole integers; 1 vote = 3) so SQLite `SUM()` stays exact.
+The hard parts are deliberately **stubbed** (no auth, no video, no jury/ML — see "Stubbed" below).
 
 ## Run
 
 ```powershell
+# 1. backend (http://localhost:5099) — SQLite dare.db auto-seeds on first start
 cd backend
 dotnet run
+
+# 2. frontend (http://localhost:3000) — calls the backend (CORS is allowed for :3000)
+cd drop-season4-ui/dare-validate-ui
+npm install
+npm run dev
 ```
 
-Then open **http://localhost:5099/** — `option2.html` is served same-origin and wired to the API.
-The SQLite DB (`dare.db`) is created and seeded on first start.
+Open **http://localhost:3000**. The frontend's API base is `NEXT_PUBLIC_API_BASE`
+(defaults to `http://localhost:5099`, see `.env.local`). Every component keeps its mock data as a
+graceful fallback if the backend is offline.
 
-Try the loop: hover-hold a sigil → "Accept the Dare" → tick the 3 checks + tap the vessel →
-"Release Into the Network". The submission is created, stub-verified, and your Score appears on
-the **Season Board** (🏆 hint, top-left).
+To reset the demo: stop the server, delete `backend/dare.db*`, restart.
 
 ## API
 
 | Method | Route | Purpose |
 |--------|-------|---------|
-| GET  | `/api/challenges`             | List live challenges (seeded from the 6 dares) |
-| GET  | `/api/me`                     | Demo user's Score + Coins (summed from the ledger) |
-| POST | `/api/submissions`            | `{ "challengeId": n }` → submission (state `submitted`) |
-| POST | `/api/submissions/{id}/verify`| Stub verify → `verified`; appends Score + Coins ledger entries |
-| GET  | `/api/leaderboard`            | Top users by Score |
+| GET  | `/api/feed`                 | Feed cards (drops) — newest first |
+| POST | `/api/drops/{id}/vote`      | `{ "verdict": "pass"\|"fail" }` → records the vote, voter earns 3 Coins (one vote per user/drop) |
+| GET  | `/api/season/current`       | Season number, days left, prize pool, 30/50/20 split |
+| GET  | `/api/leaderboard`          | Top 10 players by points (demo user flagged `isMe`) |
+| GET  | `/api/me`                   | Demo user profile + earnings breakdown |
+| GET  | `/api/live`                 | Live arena performers |
+| POST | `/api/dares`                | `{ challenge, category, difficulty, timeLimit, bounty, isPublic }` → creates a dare, returns the feed card |
+
+## Tests
+
+```powershell
+cd backend.Tests
+dotnet test
+```
+
+Integration tests run against the real HTTP surface with an isolated in-memory SQLite database
+(`TestApiFactory`): the feed, the vote loop and its failure paths (invalid verdict → 400, unknown
+drop → 404, double-vote idempotency), the season pool, the leaderboard ordering, the profile, and
+posting a dare.
 
 ## Maps to DESIGN.md
 
-- **ADR-005** — Submission state machine (`submitted → verified`).
-- **ADR-006** — Append-only ledger (a balance is the sum of `delta`).
-- **ADR-018** — Two currencies on the ledger: `score` (rank) + `coins` (wallet).
-- **ADR-020** — Score is difficulty-weighted by the challenge's points.
+- **ADR-005** — Submission/vote state lives in the `Drops`/`Votes` tables.
+- **ADR-006** — Append-only `Ledger` (a balance is the sum of `Amount`).
+- **ADR-018** — Coins are tracked on the ledger (`coins` currency, whole integers).
+- **ADR-020** — A dare's points reward is weighted by difficulty (easy 30 / medium 80 / hard 200).
 
 ## Stubbed (designed in DESIGN.md, not built here)
 
-- **Auth** → a single demo user (`you`, id 1).
-- **Video upload** → none; submission is claim-only.
-- **Verification jury / commit-reveal / ML (ADR-009/010/013)** → a manual `verify` endpoint.
-- **Coins staking / dares / Trust & Safety / anti-fraud** → out of v0 scope.
+- **Auth** → a single demo user (`your_username`, id 1).
+- **Video upload** → none; a drop is claim-only.
+- **Verification jury / commit-reveal / ML (ADR-009/010/013)** → votes apply directly.
+- **Real-time** → the live arena tallies/timers animate client-side.
 
 ## Stack
 
 .NET 9 minimal API + EF Core + SQLite. DB is created via `EnsureCreated()` (no migrations in v0).
+CORS is enabled for the Next.js dev origin (`http://localhost:3000`).
