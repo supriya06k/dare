@@ -3,7 +3,7 @@
 **Status:** Draft / brainstorm v1
 **Date:** 2026-06-24
 **Authors:** PratyushS7 (brainstormed with GitHub Copilot CLI)
-**Related:** `DOCS.md` (UI prototype documentation), `PRD_Dare_and_Validate.docx` (external, not in repo)
+**Related:** `ARCHITECTURE.md` (as-built system + how to run), `backend/README.md` (API reference), `DOCS.md` (UI prototype documentation), `PRD_Dare_and_Validate.docx` (external, not in repo)
 
 ---
 
@@ -392,6 +392,43 @@ Consequences.**
 - **Consequences:** the reward function is difficulty/rate aware; sink mechanics required; the
   §6.5 collusion job extends to Coin transfers.
 
+### ADR-021 — Season 4 UI economy is display-over-Coins (ADR-017 non-cashable stands)
+- **Status:** Accepted — implemented 2026-06-26 (reaffirms ADR-017 against the Season 4 implementation)
+- **Context:** The Season 4 UI (`drop-season4-ui`) and its wired backend (`backend/Program.cs`)
+  present a **cashable cash economy**: every vote "earns +$0.003" in dollars, a live "$14,847"
+  season pool, a **30% voters / 50% creators / 20% platform** split ("80% back to players"), and
+  per-user "earnings / payout in N days" in dollars. The backend persists this — `VoteEarnMicro =
+  $0.003` is credited to the voter's `earnings` ledger **and** added to the pool
+  (`Program.cs:11,88-90`); split at `:120-122`; per-user payout = `pool × poolShare` with a
+  hard-coded `poolShare` (`:185,403`). This contradicts ADR-017's non-cashable / platform-funded-
+  contest firewall, and the per-vote amount is **double-counted** (it both pays the voter and mints
+  the pool, with no modeled revenue inflow).
+- **Decision:** **ADR-017 stands** — currencies remain **non-cashable** and the season prize
+  remains a **platform-funded contest**. The Season 4 "$" amounts are reframed as **non-cashable
+  Coins / contest-illustrative display**, never cash. The UI copy and the wired backend must follow:
+  the per-vote unit and the `earnings` ledger currency are **Coins**, "$" is presentation only
+  (relabel to Coins), and `prizePool` + the 30/50/20 split + "payout" are contest display, not a
+  cash obligation.
+- **Rationale / data points:** ADR-017 was a deliberate legal firewall against gambling +
+  money-transmitter exposure; the cash framing emerged from UI/marketing exploration without
+  re-litigating that risk. Reconciling presentation is far cheaper than taking on cash-out / KYC /
+  MTL exposure, and one canonical economy (non-cashable Coins) prevents drift between the locked
+  design and the shipped product.
+- **Alternatives considered:** ratify the cashable model (rejected — reintroduces the exact
+  gambling / money-transmitter exposure ADR-017 firewalls, plus payout KYC/fraud per §7); leave the
+  divergence unrecorded (rejected — locked-design-vs-shipped-UI drift).
+- **Consequences (implemented 2026-06-26):**
+  - *Denomination:* **1 vote = 3 Coins** (whole integers; 1 Coin = the former milli-dollar, i.e.
+    today's "$" amounts ×1000 — pool 14,847,000, wallet 4,370). No fractional currency.
+  - *Backend (`Program.cs`):* renamed `EarningsMicro→CoinsBalance`, `PrizePoolMicro→PrizePoolCoins`,
+    `VoteEarnMicro(3000)→Econ.VoteEarnCoins(3)`; ledger currency `earnings→coins`; no `$` conversion.
+  - *UI:* every `$` is now Coins (sentences read "+3 Coins"; numbers use the `◊` sigil).
+  - *Docs:* the split is stated once as **30 voters / 50 creators / 20 platform** everywhere; the
+    frontend `ARCHITECTURE.md` "30% to top 10" wording was reconciled to match.
+  - *Still a demo artifact:* the vote→pool minting (a vote both credits the voter and mints the pool)
+    remains — a real pool is funded from revenue inflows (sponsored/brand pools, cosmetics; §5.10),
+    not from votes. Payout stays gated by ADR-017's contest eligibility + KYC/anti-fraud (§7).
+
 ---
 
 ## 5. Product model
@@ -645,6 +682,8 @@ leaderboard, and the submit "rite." Minimal logic change to `option2.html`.
   contents, moderator-console UX, SLA targets.
 - ~~**Economy**~~ — **decided (ADR-017…020):** non-cashable Score/Coins, prize-as-contest,
   bounty-first dare escrow, anti-inflation. *Residual:* exact reward curve, fee/cosmetic sinks.
+  Reaffirmed by **ADR-021** and **implemented 2026-06-26** — the Season 4 economy is non-cashable
+  Coins (1 vote = 3 Coins); the UI and backend now express Coins throughout (no `$`).
 - **Prize payout / KYC:** the platform-funded contest prize (ADR-017) still needs winner
   eligibility + KYC/anti-fraud at payout time.
 - **Platform:** mobile-first (native?) vs web — affects on-device ML for Layer 0.
@@ -663,3 +702,6 @@ leaderboard, and the submit "rite." Minimal logic change to `option2.html`.
 | 2026-06-24 | Economy locked: ADR-017 (non-cashable currency + prize-as-contest gambling firewall), ADR-018 (Score vs Coins split), ADR-019 (bounty-first dare-stake escrow lifecycle), ADR-020 (anti-inflation/anti-farming). Added §5.10 (economy model) + §5.1 currency refinement; extended the data model (ledger `currency`, Dare escrow fields, EscrowHold). |
 | 2026-06-24 | Built **v0 vertical slice** (`backend/DareApi`): .NET 9 + EF Core + SQLite, 5 endpoints, `option2.html` wired same-origin. Loop submit → stub-verify → Score/Coins ledger → leaderboard verified end-to-end in a real browser. Hard parts (auth, video, jury/ML, staking) stubbed per the ADRs. |
 | 2026-06-24 | Switched the wired prototype from the mandala (`option2.html`) to the lighter conventional app (`index.html`) per product preference. Backend default page → `index.html`; feed/submit/leaderboard (podium + list) wired to the same API. Verified end-to-end in a browser. `option2.html` wiring retained. |
+| 2026-06-26 | Wired the **Season 4 UI** (`drop-season4-ui`, Next.js) to the backend (`backend/Program.cs` rewritten to Users/Drops/Votes/Season/Ledger; feed/vote/season/leaderboard/me/live/dares endpoints + CORS; 11 xUnit tests). Verified end-to-end (vote + post-dare persist across reload). |
+| 2026-06-26 | **ADR-021** — reaffirmed ADR-017 (non-cashable) against the Season 4 implementation: the Season 4 cash economy ($0.003/vote, $ pool, 30/50/20 split) is **display-over-Coins / platform-funded contest**, not cashable; UI copy + backend `earnings`/`VoteEarnMicro` to follow (relabel to Coins). Flagged the circular vote→pool minting as a demo artifact and the "30/50/20" vs "30% to top 10" doc inconsistency. |
+| 2026-06-26 | Implemented **ADR-021**: relabeled the Season 4 economy to non-cashable **Coins** (1 vote = 3 Coins; `$`×1000). Backend renamed `EarningsMicro→CoinsBalance`, `PrizePoolMicro→PrizePoolCoins`, `VoteEarn 3000→3`, ledger `earnings→coins`; UI shows Coins (`◊`); reconciled the split to **30 / 50 / 20** across all docs. 11 tests + frontend build green. |
