@@ -1,0 +1,560 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════
+   ARENA COLOR SYSTEM
+═══════════════════════════════════════ */
+:root {
+  --wall:       #E8506A;
+  --wall-deep:  #C23358;
+  --wall-abyss: #7A1230;
+  --wall-lit:   #F2788E;
+  --suit:       #1B8B82;
+  --suit-deep:  #0C5E57;
+  --suit-lit:   #35BDB3;
+  --cream:      #F2E4CC;
+  --cream-deep: #C8B08A;
+  --gold:       #F0C040;
+  --gold-deep:  #B88820;
+  --elim:       #C82020;
+  --door:       #4A82C0;
+  --door-deep:  #284E80;
+  --ink:        #180818;
+
+  --background: var(--wall);
+  --foreground:  var(--ink);
+  --accent:      var(--wall);
+  --accent-2:    var(--suit);
+  --surface:     var(--cream);
+  --bg:          var(--wall);
+  --pink:        var(--wall);
+  --teal:        var(--suit);
+  --black:       var(--ink);
+  --red:         var(--elim);
+}
+
+@theme inline {
+  --color-background: var(--wall);
+  --color-foreground:  var(--ink);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ═══════════════════════════════════════
+   BASE
+═══════════════════════════════════════ */
+html, body {
+  background: var(--wall-abyss);
+  color: var(--ink);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ═══════════════════════════════════════
+   ARENA WORLD BACKGROUND
+═══════════════════════════════════════ */
+.arena-world {
+  background: transparent;
+  background-image:
+    radial-gradient(ellipse 260px 150px at 50% -10px,  rgba(240,192,64,0.2)  0%, transparent 100%),
+    radial-gradient(ellipse 120px 80px  at 12% 240px,  rgba(240,192,64,0.08) 0%, transparent 100%),
+    radial-gradient(ellipse 120px 80px  at 88% 520px,  rgba(240,192,64,0.08) 0%, transparent 100%),
+    linear-gradient(90deg,  rgba(24,8,24,0.18) 0, transparent 28px),
+    linear-gradient(270deg, rgba(24,8,24,0.18) 0, transparent 28px),
+    repeating-linear-gradient(180deg,
+      transparent 0, transparent 196px,
+      rgba(24,8,24,0.08) 196px, rgba(24,8,24,0.08) 200px,
+      rgba(240,192,64,0.04) 200px, rgba(240,192,64,0.04) 202px,
+      transparent 202px, transparent 396px
+    ),
+    repeating-linear-gradient(90deg,
+      transparent 0, transparent 79px,
+      rgba(24,8,24,0.035) 79px, rgba(24,8,24,0.035) 80px
+    ),
+    repeating-linear-gradient(180deg,
+      transparent 0, transparent 23px,
+      rgba(24,8,24,0.02) 23px, rgba(24,8,24,0.02) 24px
+    );
+}
+
+.arena-world-dark {
+  background: transparent;
+  background-image:
+    radial-gradient(ellipse 300px 160px at 50% -10px, rgba(240,192,64,0.1) 0%, transparent 100%),
+    radial-gradient(ellipse 160px 100px at 20% 300px, rgba(27,139,130,0.08) 0%, transparent 100%),
+    radial-gradient(ellipse 160px 100px at 80% 500px, rgba(232,80,106,0.08) 0%, transparent 100%),
+    linear-gradient(90deg,  rgba(24,8,24,0.5) 0, transparent 24px),
+    linear-gradient(270deg, rgba(24,8,24,0.5) 0, transparent 24px),
+    repeating-linear-gradient(90deg,
+      transparent 0, transparent 79px,
+      rgba(255,255,255,0.018) 79px, rgba(255,255,255,0.018) 80px
+    );
+}
+
+/* ═══════════════════════════════════════
+   SOLID GLASS SYSTEM
+   Objects carved from colored glass crystal.
+   Specular highlight at top, deep body gradient,
+   dark shadow at base. Like glass fruit.
+═══════════════════════════════════════ */
+
+/* Cream glass — warm white glass object */
+.glass {
+  background:
+    radial-gradient(ellipse 90% 50% at 50% 0%, rgba(255,255,255,0.55) 0%, transparent 65%),
+    linear-gradient(170deg,
+      rgba(255,255,255,0.14) 0%,
+      rgba(255,250,240,0.94) 18%,
+      rgba(242,228,204,0.97) 100%
+    );
+  backdrop-filter: blur(4px) saturate(2.0) brightness(1.04);
+  -webkit-backdrop-filter: blur(4px) saturate(2.0) brightness(1.04);
+  border: 1px solid rgba(255,255,255,0.92);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.92),
+    inset 0 -3px 0 rgba(200,160,100,0.3),
+    inset 3px 0 0 rgba(255,255,255,0.45),
+    inset -3px 0 0 rgba(200,160,100,0.18);
+}
+
+/* Teal glass — like the glass avocado */
+.glass-teal {
+  background:
+    radial-gradient(ellipse 90% 50% at 50% 0%, rgba(255,255,255,0.5) 0%, transparent 65%),
+    linear-gradient(170deg,
+      rgba(53,189,179,0.98) 0%,
+      rgba(27,139,130,0.96) 45%,
+      rgba(8,61,56,0.99) 100%
+    );
+  backdrop-filter: blur(4px) saturate(2.4) brightness(1.06);
+  -webkit-backdrop-filter: blur(4px) saturate(2.4) brightness(1.06);
+  border: 1px solid rgba(100,230,220,0.78);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.62),
+    inset 0 -3px 0 rgba(8,61,56,0.6),
+    inset 3px 0 0 rgba(255,255,255,0.25),
+    inset -3px 0 0 rgba(8,61,56,0.35);
+}
+
+/* Wall/pink glass — like the glass strawberry */
+.glass-wall {
+  background:
+    radial-gradient(ellipse 90% 50% at 50% 0%, rgba(255,255,255,0.5) 0%, transparent 65%),
+    linear-gradient(170deg,
+      rgba(245,140,160,0.98) 0%,
+      rgba(232,80,106,0.96) 45%,
+      rgba(122,18,48,0.99) 100%
+    );
+  backdrop-filter: blur(4px) saturate(2.4) brightness(1.05);
+  -webkit-backdrop-filter: blur(4px) saturate(2.4) brightness(1.05);
+  border: 1px solid rgba(255,155,175,0.75);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.55),
+    inset 0 -3px 0 rgba(122,18,48,0.6),
+    inset 3px 0 0 rgba(255,255,255,0.22),
+    inset -3px 0 0 rgba(122,18,48,0.3);
+}
+
+/* Dark glass */
+.glass-dark {
+  background:
+    radial-gradient(ellipse 90% 45% at 50% 0%, rgba(255,255,255,0.14) 0%, transparent 60%),
+    linear-gradient(170deg,
+      rgba(44,20,44,0.94) 0%,
+      rgba(24,8,24,0.96) 50%,
+      rgba(8,4,8,0.99) 100%
+    );
+  backdrop-filter: blur(4px) saturate(1.6);
+  -webkit-backdrop-filter: blur(4px) saturate(1.6);
+  border: 1px solid rgba(255,255,255,0.16);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.16),
+    inset 0 -3px 0 rgba(0,0,0,0.45);
+}
+
+/* Gold glass — like the glass pancake */
+.glass-gold {
+  background:
+    radial-gradient(ellipse 90% 50% at 50% 0%, rgba(255,255,255,0.6) 0%, transparent 65%),
+    linear-gradient(170deg,
+      rgba(250,220,110,0.99) 0%,
+      rgba(240,192,64,0.98) 45%,
+      rgba(184,136,32,0.99) 100%
+    );
+  backdrop-filter: blur(4px) saturate(2.2) brightness(1.06);
+  -webkit-backdrop-filter: blur(4px) saturate(2.2) brightness(1.06);
+  border: 1px solid rgba(255,235,150,0.88);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.65),
+    inset 0 -3px 0 rgba(184,136,32,0.55),
+    inset 3px 0 0 rgba(255,255,255,0.3),
+    inset -3px 0 0 rgba(184,136,32,0.25);
+}
+
+/* ═══════════════════════════════════════
+   SOLID GLASS CARD
+   Main card container — warm cream glass
+   with strong specular top and deep base
+═══════════════════════════════════════ */
+.glass-card {
+  background:
+    radial-gradient(ellipse 100% 45% at 50% 0%, rgba(255,255,255,0.55) 0%, transparent 60%),
+    linear-gradient(170deg,
+      rgba(255,255,255,0.14) 0%,
+      rgba(255,250,240,0.94) 18%,
+      rgba(242,228,204,0.97) 100%
+    );
+  backdrop-filter: blur(5px) saturate(2.0) brightness(1.04);
+  -webkit-backdrop-filter: blur(5px) saturate(2.0) brightness(1.04);
+  border-radius: 22px;
+  border: 1px solid rgba(255,255,255,0.92);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.92),
+    inset 0 -3px 0 rgba(200,160,100,0.28),
+    inset 4px 0 0 rgba(255,255,255,0.42),
+    inset -4px 0 0 rgba(200,160,100,0.16),
+    0 8px 0 #C8B08A,
+    0 14px 0 rgba(24,8,24,0.2),
+    0 24px 48px rgba(24,8,24,0.24);
+}
+
+/* ═══════════════════════════════════════
+   SOLID GLASS PRESS BUTTONS
+   Glass objects you press — specular top,
+   deep gradient body, physical depth shadow
+═══════════════════════════════════════ */
+.press-teal {
+  background:
+    radial-gradient(ellipse 90% 60% at 50% 0%, rgba(255,255,255,0.42) 0%, transparent 62%),
+    linear-gradient(170deg,
+      rgba(53,189,179,0.98) 0%,
+      rgba(27,139,130,0.97) 45%,
+      rgba(12,94,87,1.0) 100%
+    );
+  backdrop-filter: blur(4px) saturate(2.2);
+  -webkit-backdrop-filter: blur(4px) saturate(2.2);
+  color: #F2E4CC;
+  border-radius: 14px;
+  border: 1px solid rgba(100,230,220,0.72);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.52),
+    inset 0 -2px 0 rgba(8,61,56,0.55),
+    0 6px 0 #0C5E57,
+    0 8px 16px rgba(12,94,87,0.4);
+  transform: translateY(-3px);
+  transition: transform 0.07s ease, box-shadow 0.07s ease;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  outline: none;
+  text-shadow: 0 1px 0 rgba(8,61,56,0.4);
+}
+.press-teal:active {
+  transform: translateY(3px);
+  box-shadow: inset 0 3px 0 rgba(8,61,56,0.4), 0 1px 0 #0C5E57;
+}
+
+.press-wall {
+  background:
+    radial-gradient(ellipse 90% 60% at 50% 0%, rgba(255,255,255,0.38) 0%, transparent 62%),
+    linear-gradient(170deg,
+      rgba(245,140,160,0.98) 0%,
+      rgba(232,80,106,0.97) 45%,
+      rgba(122,18,48,1.0) 100%
+    );
+  backdrop-filter: blur(4px) saturate(2.2);
+  -webkit-backdrop-filter: blur(4px) saturate(2.2);
+  color: #F2E4CC;
+  border-radius: 14px;
+  border: 1px solid rgba(255,155,175,0.68);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.48),
+    inset 0 -2px 0 rgba(122,18,48,0.6),
+    0 6px 0 #7A1230,
+    0 8px 16px rgba(122,18,48,0.4);
+  transform: translateY(-3px);
+  transition: transform 0.07s ease, box-shadow 0.07s ease;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  outline: none;
+  text-shadow: 0 1px 0 rgba(122,18,48,0.45);
+}
+.press-wall:active {
+  transform: translateY(3px);
+  box-shadow: inset 0 3px 0 rgba(122,18,48,0.4), 0 1px 0 #7A1230;
+}
+
+.press-gold {
+  background:
+    radial-gradient(ellipse 90% 60% at 50% 0%, rgba(255,255,255,0.55) 0%, transparent 62%),
+    linear-gradient(170deg,
+      rgba(250,220,110,0.99) 0%,
+      rgba(240,192,64,0.98) 45%,
+      rgba(184,136,32,1.0) 100%
+    );
+  backdrop-filter: blur(4px) saturate(2.0);
+  -webkit-backdrop-filter: blur(4px) saturate(2.0);
+  color: #180818;
+  border-radius: 14px;
+  border: 1px solid rgba(255,235,150,0.85);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.65),
+    inset 0 -2px 0 rgba(184,136,32,0.55),
+    0 6px 0 #B88820,
+    0 8px 16px rgba(184,136,32,0.35);
+  transform: translateY(-3px);
+  transition: transform 0.07s ease, box-shadow 0.07s ease;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  outline: none;
+  text-shadow: 0 1px 0 rgba(184,136,32,0.3);
+}
+.press-gold:active {
+  transform: translateY(3px);
+  box-shadow: inset 0 3px 0 rgba(184,136,32,0.45), 0 1px 0 #B88820;
+}
+
+.press-ink {
+  background:
+    radial-gradient(ellipse 90% 55% at 50% 0%, rgba(255,255,255,0.14) 0%, transparent 60%),
+    linear-gradient(170deg,
+      rgba(44,20,44,0.96) 0%,
+      rgba(24,8,24,0.97) 50%,
+      rgba(8,4,8,1.0) 100%
+    );
+  backdrop-filter: blur(4px) saturate(1.6);
+  -webkit-backdrop-filter: blur(4px) saturate(1.6);
+  color: #F2E4CC;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.16),
+    inset 0 -2px 0 rgba(0,0,0,0.5),
+    0 6px 0 #000,
+    0 8px 16px rgba(0,0,0,0.35);
+  transform: translateY(-3px);
+  transition: transform 0.07s ease, box-shadow 0.07s ease;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  outline: none;
+}
+.press-ink:active { transform: translateY(3px); box-shadow: inset 0 3px 0 rgba(0,0,0,0.5), 0 1px 0 #000; }
+
+.press-cream {
+  background:
+    radial-gradient(ellipse 90% 60% at 50% 0%, rgba(255,255,255,0.7) 0%, transparent 62%),
+    linear-gradient(170deg,
+      rgba(255,255,255,0.16) 0%,
+      rgba(242,228,204,0.97) 20%,
+      rgba(210,185,155,0.98) 100%
+    );
+  backdrop-filter: blur(4px) saturate(1.8);
+  -webkit-backdrop-filter: blur(4px) saturate(1.8);
+  color: #180818;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.95);
+  box-shadow:
+    inset 0 3px 0 rgba(255,255,255,0.95),
+    inset 0 -2px 0 rgba(200,160,100,0.45),
+    0 6px 0 #C8B08A,
+    0 8px 16px rgba(24,8,24,0.22);
+  transform: translateY(-3px);
+  transition: transform 0.07s ease, box-shadow 0.07s ease;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  outline: none;
+}
+.press-cream:active {
+  transform: translateY(3px);
+  box-shadow: inset 0 3px 0 rgba(200,160,100,0.45), 0 1px 0 #C8B08A;
+}
+
+/* ═══════════════════════════════════════
+   LIVE PULSE
+═══════════════════════════════════════ */
+@keyframes live-ping {
+  0%      { transform: scale(1);   opacity: 1; }
+  75%,100%{ transform: scale(3);   opacity: 0; }
+}
+.live-dot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: currentColor;
+  animation: live-ping 1.3s cubic-bezier(0,0,0.2,1) infinite;
+}
+
+/* ═══════════════════════════════════════
+   ANIMATIONS
+═══════════════════════════════════════ */
+@keyframes slide-up {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.animate-slide-up { animation: slide-up 0.26s ease forwards; }
+
+/* ═══════════════════════════════════════
+   SHEET / OVERLAY
+═══════════════════════════════════════ */
+@keyframes sheet-up   { from{transform:translateY(100%)} to{transform:translateY(0)} }
+@keyframes sheet-down { from{transform:translateY(0)}    to{transform:translateY(100%)} }
+@keyframes fade-in    { from{opacity:0} to{opacity:1} }
+@keyframes fade-out   { from{opacity:1} to{opacity:0} }
+.sheet-enter   { animation: sheet-up   0.36s cubic-bezier(0.19,1,0.22,1) forwards; }
+.sheet-exit    { animation: sheet-down 0.24s ease-in forwards; }
+.overlay-enter { animation: fade-in    0.2s ease forwards; }
+.overlay-exit  { animation: fade-out   0.2s ease forwards; }
+
+/* ═══════════════════════════════════════
+   VIEW TRANSITIONS
+═══════════════════════════════════════ */
+::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: 0.22s;
+  animation-timing-function: cubic-bezier(0.19,1,0.22,1);
+}
+::view-transition-old(tab-content) { animation: tab-exit  0.18s ease forwards; }
+::view-transition-new(tab-content) { animation: tab-enter 0.22s ease forwards; }
+@keyframes tab-exit  { from{opacity:1;transform:translateY(0)}    to{opacity:0;transform:translateY(8px)} }
+@keyframes tab-enter { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+/* ═══════════════════════════════════════
+   SCROLL SHINE SYSTEM
+   Moving specular sheen that slides across
+   the arena wall as user scrolls — like
+   light glancing off colored glass
+═══════════════════════════════════════ */
+
+/* Fixed arena wall — lives behind everything */
+.arena-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: #C23358;
+  background-image:
+    /* ceiling spotlight */
+    radial-gradient(ellipse 320px 180px at 50% 0px, rgba(240,192,64,0.22) 0%, transparent 100%),
+    /* side column shadows */
+    linear-gradient(90deg, rgba(24,8,24,0.22) 0, transparent 32px),
+    linear-gradient(270deg, rgba(24,8,24,0.22) 0, transparent 32px),
+    /* structural grid lines */
+    repeating-linear-gradient(180deg,
+      transparent 0, transparent 196px,
+      rgba(24,8,24,0.1) 196px, rgba(24,8,24,0.1) 200px,
+      rgba(240,192,64,0.045) 200px, rgba(240,192,64,0.045) 202px,
+      transparent 202px, transparent 396px
+    ),
+    repeating-linear-gradient(90deg,
+      transparent 0, transparent 79px,
+      rgba(24,8,24,0.04) 79px, rgba(24,8,24,0.04) 80px
+    );
+}
+
+/* The moving shine beam — position driven by JS scroll */
+.arena-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    108deg,
+    transparent 0%,
+    transparent calc(var(--shine-y, -120%) - 80px),
+    rgba(255,255,255,0.055) calc(var(--shine-y, -120%) - 40px),
+    rgba(255,200,200,0.12) var(--shine-y, -120%),
+    rgba(255,255,255,0.055) calc(var(--shine-y, -120%) + 40px),
+    transparent calc(var(--shine-y, -120%) + 80px),
+    transparent 100%
+  );
+  transition: background 0.05s linear;
+}
+
+/* Parallax scroll shimmer on card glass surfaces */
+@keyframes glass-shimmer {
+  0%   { transform: translateX(-120%) skewX(-18deg); }
+  100% { transform: translateX(320%) skewX(-18deg); }
+}
+
+.shimmer-on-load::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 45%;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.18) 50%, transparent 100%);
+  transform: skewX(-18deg) translateX(-120%);
+  animation: glass-shimmer 1.8s ease forwards;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* Card entrance with glass sheen */
+@keyframes card-rise {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+.card-enter {
+  animation: card-rise 0.36s cubic-bezier(0.19,1,0.22,1) both;
+}
+
+/* ═══════════════════════════════════════
+   UTILS
+═══════════════════════════════════════ */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+@keyframes num-flip {
+  0%  { transform: translateY(0);    opacity: 1; }
+  49% { transform: translateY(-8px); opacity: 0; }
+  50% { transform: translateY(8px);  opacity: 0; }
+  100%{ transform: translateY(0);    opacity: 1; }
+}
+.num-flip { animation: num-flip 0.28s ease; }
+
+@keyframes urgent-pulse {
+  0%,100%{ opacity:1 } 50%{ opacity:0.35 }
+}
+.urgent { animation: urgent-pulse 0.55s ease-in-out infinite; color: #C82020 !important; }
+
+.btn-press { transition: transform 0.07s ease; cursor: pointer; }
+.btn-press:active { transform: scale(0.96); }
+
+.grid-pattern {
+  background-image:
+    linear-gradient(rgba(24,8,24,0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(24,8,24,0.12) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
