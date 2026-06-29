@@ -4,6 +4,14 @@
 >
 > User-facing brand: **DARE** · Internal code term for a submission: **drop**
 
+> **Implementation status (Season 4 — as built):** the backend now implements this architecture —
+> the verification engine (AI pre-screen → 60s crowd override), the `Dare`/`Drop` split, the
+> accept → proof → forfeit flow, and the entry-fee prize pool. Routes are served under `/api`
+> (e.g. `/api/drops`, `/api/seasons/current`, `/api/users/me`). See `../../backend/README.md` and the
+> as-built `../../ARCHITECTURE.md`. The staked jury (DESIGN.md ADR-001/009/010) remains the Phase-2
+> target; the shipped AI + crowd-override model is recorded as DESIGN.md ADR-022 (pool funding as
+> ADR-023, accept/forfeit as ADR-024).
+
 ---
 
 ## The Five Layers

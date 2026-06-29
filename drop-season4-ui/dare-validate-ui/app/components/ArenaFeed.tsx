@@ -200,6 +200,7 @@ export default function ArenaFeed() {
     <>
       {acceptedDare && (
         <AcceptDareModal
+          dareId={acceptedDare.id}
           dare={acceptedDare.dare}
           category={acceptedDare.category}
           rep={acceptedDare.rep}

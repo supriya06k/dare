@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { X, ChevronRight, ChevronLeft, Zap, Clock, Eye, EyeOff, Trophy } from "lucide-react";
 import clsx from "clsx";
-import { apiPost } from "../lib/api";
+import { apiPost, type CreatedDare } from "../lib/api";
 
 function sg(top: string, mid: string, bot: string, hi = 0.44) {
   return [
@@ -93,6 +93,7 @@ export default function PostDareSheet({ onClose, onPosted }: { onClose: () => vo
   const [timeLimit, setTimeLimit] = useState<string | null>(null);
   const [bounty, setBounty] = useState("");
   const [isPublic, setIsPublic] = useState(true);
+  const [verdict, setVerdict] = useState<string | null>(null);
 
   const textRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { if (step === 1) setTimeout(() => textRef.current?.focus(), 300); }, [step]);
@@ -103,7 +104,7 @@ export default function PostDareSheet({ onClose, onPosted }: { onClose: () => vo
   async function publish() {
     setPublishing(true);
     try {
-      await apiPost("/api/dares", {
+      const created = await apiPost<CreatedDare>("/api/dares", {
         challenge,
         category: category ?? "",
         difficulty: difficulty ?? "",
@@ -111,6 +112,7 @@ export default function PostDareSheet({ onClose, onPosted }: { onClose: () => vo
         bounty,
         isPublic,
       });
+      setVerdict(created.status);
       onPosted?.();
     } catch {
       /* still show the success screen even if the backend is unavailable */
@@ -175,6 +177,16 @@ export default function PostDareSheet({ onClose, onPosted }: { onClose: () => vo
                     style={{ background: "rgba(0,0,0,0.2)", borderRadius: "100px" }}>+{selectedDiff.rep} rep</span>}
                   {timeLimit && <span className="text-[9px] text-[#F2E4CC]/60">{TIME_LIMITS.find(t => t.id === timeLimit)?.label} to complete</span>}
                 </div>
+              </div>
+            )}
+            {verdict && (
+              <div className="text-[11px] font-black px-4 py-2 rounded-full"
+                style={{
+                  background: verdict === "verified" ? "rgba(16,185,129,0.14)" : verdict === "ai_rejected" ? "rgba(251,191,36,0.16)" : "rgba(255,61,110,0.12)",
+                  border: `1px solid ${verdict === "verified" ? "rgba(16,185,129,0.4)" : verdict === "ai_rejected" ? "rgba(251,191,36,0.45)" : "rgba(255,61,110,0.4)"}`,
+                  color: verdict === "verified" ? "#0F766E" : verdict === "ai_rejected" ? "#92660A" : "#B0184A",
+                }}>
+                AI verdict: {verdict === "verified" ? "verified ✓" : verdict === "voting" ? "in crowd vote — humans decide" : verdict === "ai_rejected" ? "rejected — crowd can override" : verdict}
               </div>
             )}
             <button onClick={close} className="press-wall w-full py-4 rounded-2xl text-[14px]">

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Eye, Check, X, Coins, Zap } from "lucide-react";
-import { apiGet, type LivePerformerDto } from "../lib/api";
+import { apiGet, apiPost, type LivePerformerDto } from "../lib/api";
 
 const VOTE_VALUE = 3;
 
@@ -68,6 +68,9 @@ function LiveCard({ p }: { p: LivePerformer }) {
     if (v === "pass") setPass((n) => n + 1); else setFail((n) => n + 1);
     setShowEarned(true);
     setTimeout(() => setShowEarned(false), 3000);
+    /* Persist the live vote (earns Coins server-side). Keep the optimistic tally so the
+       animated counter doesn't snap back to the persisted value. */
+    apiPost(`/api/live/${p.id}/vote`, { verdict: v }).catch(() => {});
   }
 
   const inset = `inset 0 3px 0 rgba(255,255,255,${p.hi + 0.06}), inset 0 -3px 0 rgba(0,0,0,0.22), 0 8px 0 ${p.deep}, 0 14px 0 rgba(24,8,24,0.2), 0 24px 48px rgba(24,8,24,0.28)`;

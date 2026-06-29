@@ -69,7 +69,8 @@ Each decision records: **Context → Decision → Rationale/data points → Alte
 Consequences.**
 
 ### ADR-001 — Layered, staked verification (NOT naive crowd voting)
-- **Status:** Accepted
+- **Status:** Superseded for v0 by **ADR-022** (Phase-1 verification as built). The staked-jury model
+  remains the Phase-2 target; the shipped Season 4 engine is the AI-pre-screen + crowd-override below.
 - **Context:** Verification integrity (Problem #1) is existential; raw crowd votes are trivially
   Sybil-able and collusion-prone.
 - **Decision:** Replace crowd voting with a 3-layer pipeline:
@@ -358,7 +359,7 @@ Consequences.**
   stakes touch Coins only.
 
 ### ADR-019 — Dare-stake lifecycle & escrow; bounty-first
-- **Status:** Accepted
+- **Status:** Refined for v0 by **ADR-024** (Phase-1 accept → deadline → forfeit as built).
 - **Context:** ADR-002's stake mechanic needs concrete escrow/payout/anti-griefing rules; staking
   is also a coercion vector (ADR-014).
 - **Decision:**
@@ -428,6 +429,75 @@ Consequences.**
   - *Still a demo artifact:* the vote→pool minting (a vote both credits the voter and mints the pool)
     remains — a real pool is funded from revenue inflows (sponsored/brand pools, cosmetics; §5.10),
     not from votes. Payout stays gated by ADR-017's contest eligibility + KYC/anti-fraud (§7).
+  - **Update (ADR-023):** the vote→pool minting demo artifact has since been removed — the pool is
+    now funded by **ranked-dare entry fees**.
+
+### ADR-022 — Phase-1 verification engine: AI pre-screen + crowd override (supersedes ADR-001 for v0)
+- **Status:** Accepted — implemented (Season 4). Supersedes ADR-001's staked jury **for v0 only**;
+  the jury (ADR-009/010) remains the Phase-2 target.
+- **Gap / why:** ADR-001's staked, graph-excluded, commit-reveal jury is the right long-term moat,
+  but it can't be stood up against a cold pool with a single demo user and no reputation graph — so
+  the shipped product had *no* verification at all (every drop was implicitly "verified"). That is
+  the one thing DESIGN.md §2 says we must never ship.
+- **Benefit:** a working, legible verification loop now — and the exact "Humans vs The Machine"
+  narrative the Season 4 UI is built around — at a fraction of the cost, while leaving a clean
+  migration path to the jury.
+- **Decision:** model the submission lifecycle as an explicit status machine
+  `pending → ai_rejected | verified (auto) | voting → verified | rejected`, driven by:
+  - **Layer 0 — AI pre-screen** (`IProofScreener`, stubbed `StubProofScreener`): returns
+    `{ pass, confidence, reason }`. `confidence > 0.85` auto-resolves (pass → `verified`, fail →
+    `ai_rejected`); otherwise the drop opens a **60-second crowd window** (`voting`).
+  - **Layer 1 — crowd override:** when the window closes, **≥ 60% PASS** overrides the machine to
+    `verified`; otherwise the AI verdict stands and the drop is `rejected`. The threshold is a
+    product knob (configurable per dare type).
+- **Rationale / data points:** this is the frontend `ARCHITECTURE.md` model the UI already encodes;
+  the 0.85 auto-gate keeps scarce human attention for the genuinely-uncertain cases; the 60% override
+  is the "humans can beat the AI" hook (DOCS.md §6). The `IProofScreener` + injected `TimeProvider`
+  seams keep the windows/verdicts deterministic and testable, and swap cleanly for real ML + the
+  jury later.
+- **Alternatives considered:** ship the full jury now (rejected — no pool/reputation graph to draw
+  jurors from); keep direct-apply votes (rejected — no verification = the §2 failure mode).
+- **Consequences:** `Drop` gains `status`, `ai_confidence`, `voting_ends_at`, `rep_awarded`;
+  resolution is lazy (on read/vote — no background job in v0); the "crowd" is currently the single
+  demo user (the ratio threshold still exercises the real override path).
+
+### ADR-023 — Prize pool funded by ranked-dare entry fees (supersedes ADR-021's vote-minting)
+- **Status:** Accepted — implemented (Season 4). Supersedes the vote→pool minting that ADR-021 had
+  flagged as a demo artifact. ADR-017's non-cashable / platform-funded-contest firewall still stands.
+- **Gap / why:** ADR-021 left a known wart — every vote *minted* 3 Coins into the pool with no
+  modeled revenue inflow, so the headline pool number inflated with engagement rather than economics
+  (and double-counted the per-vote reward). The frontend `ARCHITECTURE.md` revenue model is explicit:
+  the pool comes from **entry fees on ranked dares** (and brand dares), not from votes.
+- **Benefit:** the pool now reflects real (modeled) inflows; votes reward the voter without distorting
+  the pool; ranked entry gains a Coins **sink** (ADR-020), making the currency scarcer and rank more
+  meaningful.
+- **Decision:** remove the vote→pool minting. A `Dare` carries `is_ranked` + `entry_fee_coins`;
+  **accepting** a ranked dare debits the player's Coins (ledger sink) and credits the season pool by
+  the entry fee. The seeded pool represents accumulated entry fees. Voters still earn 3 Coins/vote
+  (credited to them, **not** the pool).
+- **Alternatives considered:** keep vote-minting (rejected — the documented distortion); charge the
+  fee on *verified completion* rather than accept (deferred — accept-time is simpler and also funds
+  the pool for forfeits).
+- **Consequences:** `Dare` gains `is_ranked`/`entry_fee_coins`/`is_brand_dare`/`sponsor_id`; the vote
+  endpoint no longer touches the pool; the accept endpoint does.
+
+### ADR-024 — Accept → 20-minute deadline → forfeit (Phase-1 shape of ADR-019)
+- **Status:** Accepted — implemented (Season 4). The concrete Phase-1 slice of ADR-019's stake
+  lifecycle, matching the frontend `AcceptDareModal`.
+- **Gap / why:** the UI had an Accept modal with a 20-minute countdown and a "forfeit is on the
+  record" promise, but **no backend** — it was pure scaffolding, so accepting did nothing and a
+  forfeit was never recorded.
+- **Benefit:** the FOMO/accountability mechanic (ADR-019 §; frontend Key-Decision #4/#5) now actually
+  works end-to-end, and reuses the same verification engine for the proof.
+- **Decision:** `POST /api/dares/{id}/accept` creates a `Drop` in `accepted` with a server-owned
+  `deadline_at = now + 20m` (and charges the ranked entry fee per ADR-023). `POST /api/drops/{id}/proof`
+  submits proof → runs the ADR-022 pre-screen **if in time**; past the deadline the drop becomes
+  `forfeited` and the forfeit is recorded on the user (a public `forfeits` count + a ledger mark).
+- **Alternatives considered:** the full bounty/escrow + mutual-stake duel of ADR-019 (deferred — needs
+  the directed dare relationship + escrow holds); client-only countdown (rejected — the existing,
+  unenforceable scaffolding).
+- **Consequences:** `Drop` gains `deadline_at`; `User` gains `forfeits`; the bounty/escrow + duel
+  parts of ADR-019 remain Phase-2.
 
 ---
 

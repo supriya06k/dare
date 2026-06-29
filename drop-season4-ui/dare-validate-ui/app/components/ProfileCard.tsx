@@ -48,7 +48,7 @@ export default function ProfileCard() {
   /* Load the live profile from the backend (mock values are the fallback) */
   useEffect(() => {
     let alive = true;
-    apiGet<Me>("/api/me").then((d) => {
+    apiGet<Me>("/api/users/me").then((d) => {
       if (!alive || !d) return;
       setMe(d);
       setEarnings(d.earnings.total);

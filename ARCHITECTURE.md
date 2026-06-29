@@ -21,17 +21,21 @@ the API owns the database.
 ```
 ┌──────────────────────────┐        HTTP / JSON         ┌────────────────────────────┐
 │  Next.js UI  (port 3000) │  ───────────────────────▶  │  DareApi (.NET)  (port 5099)│
-│  drop-season4-ui         │   GET  /api/feed           │  minimal API + EF Core      │
-│  - 5 tabs (Feed/Live/    │   POST /api/drops/{id}/vote│        │                     │
-│    Ranks/Me/Post)        │   GET  /api/season/current │        ▼                     │
-│  - app/lib/api.ts client │   GET  /api/leaderboard    │  ┌──────────────┐           │
-│  - mock data = fallback  │   GET  /api/me             │  │ SQLite        │           │
-│                          │   GET  /api/live           │  │ backend/dare.db│          │
-│                          │   POST /api/dares          │  └──────────────┘           │
-└──────────────────────────┘  ◀───────────────────────  └────────────────────────────┘
-        React 19                    CORS allows :3000              Users · Drops · Votes
-        Tailwind v4                                                Ledger · Season · Live
+│  drop-season4-ui         │                            │  minimal API + EF Core      │
+│  - 5 tabs (Feed/Live/    │   verification engine:     │        │                     │
+│    Ranks/Me/Post)        │   AI pre-screen → crowd    │        ▼                     │
+│  - app/lib/api.ts client │   override → verified       │  ┌──────────────┐           │
+│  - mock data = fallback  │                            │  │ SQLite        │           │
+│                          │   ◀─── plain JSON ────▶    │  │ backend/dare.db│          │
+│                          │                            │  └──────────────┘           │
+└──────────────────────────┘     CORS allows :3000      └────────────────────────────┘
+        React 19                                          Users · Dares · Drops · Votes
+        Tailwind v4                                        Ledger · Season · LiveSession
 ```
+
+**Endpoints** (full list in §3.2): `GET/POST /api/drops`, `/api/drops/{id}/vote`,
+`/api/drops/{id}/proof`, `GET/POST /api/dares`, `/api/dares/{id}/accept`, `/api/seasons/current`,
+`/api/seasons/{id}/leaderboard`, `/api/users/me`, `GET/POST /api/live`.
 
 - **Frontend:** Next.js 16 (App Router, Turbopack), React 19, Tailwind v4, a single client page with
   state-based tab routing. Each tab fetches from the API on mount and keeps its original mock data as
@@ -65,13 +69,15 @@ restart.
 
 | Feature | Works? | What happens |
 |---|---|---|
-| **Feed** | ✅ persisted | Loads drops from `/api/feed`; each card's pool contribution = `votes × 3 Coins`. |
-| **Vote (PASS/FAIL)** | ✅ persisted | `POST /api/drops/{id}/vote` records the vote, credits the voter 3 Coins, bumps the drop's count. **One vote per user/drop** (idempotent). Survives reload. |
-| **Post a dare** | ✅ persisted | The 4-step sheet `POST /api/dares`; the new dare appears at the **top of the feed** and persists across reload; your challenge count increments. |
-| **Ranks / Season** | ✅ persisted | `/api/season/current` (pool, days-left, 30/50/20 split) + `/api/leaderboard` (top 10, "You" flagged). Reflects your live votes/posts. |
-| **Profile (Me)** | ✅ persisted | `/api/me` — earnings total, votes given, challenges, city rank update live. |
-| **Live arena** | 🟡 seeded | Loads 3 performers from `/api/live`; the tallies/timers/viewers animate **client-side only**. |
-| **Prize-pool ticker** | 🟡 cosmetic | The headline number ticks up via a client timer for "live" feel (on top of the real seeded value). |
+| **Feed** | ✅ persisted | Loads verified + in-voting drops from `/api/drops`; each card's pool contribution = `votes × 3 Coins` (server-computed), with a verification-status badge. |
+| **Vote (PASS/FAIL)** | ✅ persisted | `POST /api/drops/{id}/vote` records the vote, credits the voter 3 Coins, bumps the count. **One vote per user/drop** (idempotent). In an open voting window the tally can trigger the crowd override. |
+| **Verification engine** | ✅ persisted | Composed/submitted drops run an **AI pre-screen** → `verified`/`ai_rejected` (confidence > 0.85) or a **60s crowd window** → ≥60% PASS overrides to `verified`, else `rejected`. |
+| **Compose a dare** | ✅ persisted | The 4-step sheet `POST /api/dares` creates a Dare + the creator's first submission, runs the pre-screen, and surfaces the AI verdict; it appears at the **top of the feed**. |
+| **Accept → proof → forfeit** | ✅ persisted | `POST /api/dares/{id}/accept` opens a 20-min deadline (ranked dares charge an entry fee into the pool); `POST /api/drops/{id}/proof` submits proof (or forfeits past the deadline — recorded on your profile). |
+| **Ranks / Season** | ✅ persisted | `/api/seasons/current` (pool, days-left, 30/50/20 split) + `/api/seasons/{id}/leaderboard` (top 10, "You" flagged). |
+| **Profile (Me)** | ✅ persisted | `/api/users/me` — **ledger-summed** balance, votes given, challenges, forfeits, city rank. |
+| **Live arena** | 🟡 seeded + votes persist | Loads 3 performers from `/api/live`; the tallies/timers animate **client-side**, but a PASS/FAIL now persists via `POST /api/live/{id}/vote` (earns Coins). |
+| **Prize-pool ticker** | 🟡 cosmetic | The headline number ticks up via a client timer for "live" feel (on top of the real seeded + entry-fee value). |
 
 ---
 
@@ -87,39 +93,55 @@ DESIGN.md ADR-017/021 — the economy is a platform-funded contest, never cash.)
 
 | Entity | Key fields | Notes |
 |---|---|---|
-| `User` | `Id`, `Handle`, `Name`, `City`, `Initials`, `PlayerNo`, `Rep`, `Streak`, `Points`, `CoinsBalance`, `VotesGiven`, `Challenges`, `PoolShare`, `IsDemo` | `Id` is **caller-assigned** (`ValueGeneratedNever`) so the seeded leaderboard order is deterministic. Demo user = `Id 1`. |
-| `Drop` | `Id`, `PlayerNo`, `Title`, `Username`, `City`, `Category`, `ColorKey`, `Duration`, `Views`, `Verified`, `Trending`, `Tall`, `PassVotes`, `FailVotes`, `Pts`, `CreatorUserId`, `CreatedAt` | A feed item. `votes = PassVotes + FailVotes`. `ColorKey` ∈ {wall, teal, door, gold} maps to the glass palette. |
+| `User` | `Id`, `Handle`, `Name`, `City`, `Initials`, `PlayerNo`, `Rep`, `Streak`, `Points`, `VotesGiven`, `Challenges`, `Forfeits`, `PoolShare` | `Id` is **caller-assigned** (`ValueGeneratedNever`); demo user = `Id 1`. The Coins **balance is not a field** — it's the sum of the user's `coins` ledger entries (ADR-006). |
+| `Dare` | `Id`, `Title`, `Category`, `Difficulty`, `RepReward`, `ColorKey`, `ExpiresAt`, `IsBrandDare`, `SponsorId`, `EntryFeeCoins`, `IsRanked`, `IsOpen`, `CreatedAt` | An open challenge to attempt. `IsOpen` + future `ExpiresAt` = available to accept; ranked dares carry an `EntryFeeCoins` that funds the pool (ADR-023). |
+| `Drop` | `Id`, `DareId`, `UserId?`, author snapshot (`PlayerNo`/`Username`/`City`), `ProofUrl?`, `Status`, `AiConfidence?`, `PassVotes`, `FailVotes`, `VotingEndsAt?`, `DeadlineAt?`, `RepAwarded`, `Duration`, `Views`, `Trending`, `Tall`, `CreatedAt` | A **proof submission** against a `Dare`. `Status` ∈ {pending, accepted, voting, verified, rejected, ai_rejected, forfeited}. Title/category/colors come from the `Dare`; `UserId` is null for seeded external creators. |
 | `Vote` | `Id`, `DropId`, `VoterUserId`, `Verdict`, `CreatedAt` | **Unique index on `(DropId, VoterUserId)`** enforces one vote per user/drop. |
-| `LedgerEntry` | `Id`, `UserId`, `Currency` (`earnings`\|`score`\|`rep`), `Amount` (long), `Reason`, `Status`, `CreatedAt` | **Append-only** (a balance is the sum of `Amount`). Mirrors DESIGN.md ADR-006/018. |
-| `Season` | `Id`, `Number`, `StartsAt`, `EndsAt`, `PrizePoolCoins` | One row (Season 4). `daysLeft` is derived from `EndsAt`. |
-| `LiveSession` | `Id`, `PlayerNo`, `Initials`, `Name`, `City`, `SeasonRank`, `Challenge`, `EndsInSeconds`, `Viewers`, `PassVotes`, `FailVotes`, `ColorKey` | Seeded live-arena performers. |
+| `LedgerEntry` | `Id`, `UserId`, `Currency` (`coins`\|`score`\|`rep`\|`forfeit`), `Amount` (long), `Reason`, `Status`, `CreatedAt` | **Append-only** (a balance is the sum of `Amount`). Mirrors DESIGN.md ADR-006/018. |
+| `Season` | `Id`, `Number`, `StartsAt`, `EndsAt`, `PrizePoolCoins` | One row (Season 4). Pool = seeded accumulated **entry fees**, grown as ranked dares are accepted. |
+| `LiveSession` | `Id`, `PlayerNo`, `Initials`, `Name`, `City`, `SeasonRank`, `Challenge`, `EndsInSeconds`, `Viewers`, `PassVotes`, `FailVotes`, `ColorKey` | Seeded live-arena performers (votes persist). |
 
-`DareDb` registers all six as `DbSet`s. The schema is created with `EnsureCreated()` (no
+Timestamps are `DateTimeOffset`; `now` comes from an injected `TimeProvider` (real `TimeProvider.System`
+in prod, a `FakeClock` in tests). The AI pre-screen is behind an injected `IProofScreener`
+(`StubProofScreener` in prod, a forceable `FakeScreener` in tests).
+
+`DareDb` registers all seven as `DbSet`s. The schema is created with `EnsureCreated()` (no
 migrations) — **changing an entity means deleting `dare.db` so it re-creates**.
 
 ### 3.2 Endpoints
 
 | Method | Route | Logic |
 |---|---|---|
-| GET | `/api/feed` | All drops, newest first (`CreatedAt desc`), projected to the UI card shape (incl. palette colors + derived `poolContrib`). |
-| POST | `/api/drops/{id}/vote` | Body `{verdict:"pass"\|"fail"}`. Validates verdict (else **400**) and drop (else **404**). If the user hasn't voted: append a `Vote`, bump `PassVotes`/`FailVotes`, `VotesGiven++`, credit `CoinsBalance += 3` Coins (+ ledger), grow the pool. Returns updated tallies + `alreadyVoted`. Re-voting is a no-op (`alreadyVoted:true`, `earned:0`). |
-| GET | `/api/season/current` | `number`, `daysLeft` (ceil of `EndsAt − now`), `prizePool`, and `splits` = pool × {0.30 voters, 0.50 creators, 0.20 platform}. |
-| GET | `/api/leaderboard` | Top 10 users by `Points` desc; `rank` from order; `isMe` flags the demo user. |
-| GET | `/api/me` | Demo profile: identity, `cityRank` (computed from the leaderboard order), and an earnings breakdown (`votesCast` is live = `VotesGiven × 3 Coins`; other lines are seeded constants). |
+| GET | `/api/drops` | Verified + in-voting drops, newest first, joined to their `Dare` and projected to the UI card shape (incl. `status`, `aiConfidence`, palette colors, derived `poolContrib`). Resolves any due voting window on read. |
+| GET | `/api/drops/{id}` | One drop (resolves a due voting window first). **404** if unknown. |
+| POST | `/api/drops/{id}/vote` | Body `{verdict:"pass"\|"fail"}`. Validates verdict (**400**) and drop (**404**). First vote: append a `Vote`, bump tallies, `VotesGiven++`, credit 3 Coins (ledger). In an open window that has just closed, settle (≥60% PASS → `verified`, else `rejected`). Re-voting is a no-op (`alreadyVoted:true`, `earned:0`). |
+| GET | `/api/dares` | Open, unexpired dares available to accept. |
+| POST | `/api/dares` | Body `{challenge, category, difficulty, timeLimit, bounty, isPublic, proofUrl?}`. Validates `challenge` length (≥ 8, else **400**). Creates a `Dare` + the demo user's first `Drop`, runs the **AI pre-screen** (→ `verified`/`ai_rejected`/`voting`), `Challenges++`, appends a `rep` ledger entry. Returns the card with its `status`. |
+| POST | `/api/dares/{id}/accept` | Creates a `Drop` in `accepted` with `DeadlineAt = now + 20m`. Ranked dares debit the entry fee (Coins sink) and add it to the season pool. **404** unknown, **400** expired. |
+| POST | `/api/drops/{id}/proof` | Body `{proofUrl}`. For an `accepted` drop: in time → run the pre-screen; past `DeadlineAt` → `forfeited` (+ `Forfeits++`, ledger mark). **404** unknown, **400** if not awaiting proof. |
+| GET | `/api/seasons/current` | `id`, `number`, `daysLeft` (ceil of `EndsAt − now`), `prizePool`, and `splits` = pool × {0.30 voters, 0.50 creators, 0.20 platform}. |
+| GET | `/api/seasons/{id}/leaderboard` | Top 10 users by `Points` desc (earnings = ledger-summed Coins); `isMe` flags the demo user. **404** unknown season. |
+| GET | `/api/users/me` | Demo profile: identity, `cityRank`, `forfeits`, and an earnings breakdown (`total` = ledger-summed Coins; other lines are seeded constants). |
 | GET | `/api/live` | Seeded `LiveSession`s projected with palette colors. |
-| POST | `/api/dares` | Body `{challenge, category, difficulty, timeLimit, bounty, isPublic}`. Validates `challenge` length (≥ 8, else **400**). Creates a `Drop` authored by the demo user (`CreatedAt = now` → top of feed), `Challenges++`, appends a `rep` ledger entry. Returns the new card. `difficulty` → points (easy 30 / medium 80 / hard 200); `category` → color. |
+| POST | `/api/live/{id}/vote` | Body `{verdict}`. Persists the live tally + earns 3 Coins. **400** bad verdict, **404** unknown session. |
 
 ### 3.3 Cross-cutting conventions
 
 - **Whole Coins** everywhere money is stored (`long`, non-cashable; 1 vote = 3 Coins). No
   fractional currency and no `$` — see DESIGN.md ADR-017/021.
-- **Append-only ledger** — earnings/score/rep are events, never mutated in place.
+- **Append-only ledger as the source of truth** — a Coins balance is the **sum** of its `coins`
+  ledger entries (no mutated `CoinsBalance` field); earnings/score/rep/forfeit are events.
+- **Verification status machine** — a `Drop` carries an explicit `Status`; resolution of voting
+  windows is **lazy** (on read/vote — no background job in v0).
+- **Entry-fee pool** — the season pool is funded by ranked-dare `EntryFeeCoins` on accept (ADR-023),
+  **not** by votes; voters earn Coins that don't touch the pool.
+- **Injected seams for determinism** — `TimeProvider` (the clock) and `IProofScreener` (the AI) are
+  DI services, so the 60s window / 20-min deadline / AI verdict are deterministic in tests.
 - **Idempotent voting** — DB unique index + an existence check.
-- **Server-owned palette** — the UI's glass colors come from the API (`ColorKey` → `GlassColor`), so
-  the backend is the single source of truth even for styling tokens.
+- **Server-owned palette** — glass colors come from the API (`ColorKey` → `GlassColor`).
 - **CORS** is open to `http://localhost:3000` only.
-- **`public partial class Program {}`** + `InternalsVisibleTo("DareApi.Tests")` exist solely to let
-  the test project host the app and swap the database.
+- **`public partial class Program {}`** + `InternalsVisibleTo("DareApi.Tests")` let the test project
+  host the app and swap the database, clock, and screener.
 
 ---
 
@@ -136,12 +158,13 @@ for an API fetch, keeping the mock as a fallback.
 
 | Component | Reads | Writes |
 |---|---|---|
-| `DareFeed.tsx` | `GET /api/feed`, `GET /api/season/current` | `POST /api/drops/{id}/vote` (optimistic; updates the card's count on success) |
-| `SeasonBoard.tsx` | `GET /api/season/current`, `GET /api/leaderboard` | — |
-| `ProfileCard.tsx` | `GET /api/me` | — |
-| `LiveArena.tsx` | `GET /api/live` | — (client animates the rest) |
-| `PostDareSheet.tsx` | — | `POST /api/dares` on "Launch" |
-| `page.tsx` | — | Holds `feedKey`; after a post, `onPosted` bumps it + switches to the Feed tab so `DareFeed` refetches and shows the new dare. |
+| `DareFeed.tsx` | `GET /api/drops`, `GET /api/seasons/current`, `GET /api/dares` (open dares) | `POST /api/drops/{id}/vote` (optimistic; uses server `poolContrib`) |
+| `AcceptDareModal.tsx` | — | `POST /api/dares/{id}/accept`, then `POST /api/drops/{id}/proof` (shows the verdict) |
+| `SeasonBoard.tsx` | `GET /api/seasons/current` → `GET /api/seasons/{number}/leaderboard` | — |
+| `ProfileCard.tsx` | `GET /api/users/me` | — |
+| `LiveArena.tsx` | `GET /api/live` | `POST /api/live/{id}/vote` |
+| `PostDareSheet.tsx` | — | `POST /api/dares` on "Launch" (surfaces the AI verdict) |
+| `page.tsx` | — | Holds `feedKey`; after a post, `onPosted` bumps it + switches to the Feed tab so `DareFeed` refetches. |
 
 ---
 
@@ -149,26 +172,30 @@ for an API fetch, keeping the mock as a fallback.
 
 This is the most important thing to understand before building on it.
 
-- **Real & persisted (survives reload):** the feed list, drop vote counts, the demo user's earnings
-  ledger + votes-given, posted dares, the demo user's challenge count.
+- **Real & persisted (survives reload):** the feed list, drop vote counts + verification `status`,
+  the demo user's Coins ledger + votes-given, composed dares + their AI verdict, accepted dares /
+  proof / forfeits, the entry-fee-funded pool, the demo user's challenge count.
 - **Seeded (in the DB, but static — not derived live):** the 9 NPC leaderboard players' stats, the
-  live-arena performers, the season pool's base value & end date, and several profile lines
-  (`poolShare`, `challengesCreated`, `watchCredit`, `creatorsHelped`, the 3 badges).
+  live-arena performers, the open dares, the season pool's base value & end date, and several profile
+  lines (`poolShare`, `challengesCreated`, `watchCredit`, `creatorsHelped`, the 3 badges).
 - **Cosmetic / client-only:** the prize-pool "ticking up" animation, and the live-arena per-second
   vote tallies / countdown timers / viewer counts.
-- **Stubbed (designed in `DESIGN.md`, not built):** auth (single demo user), video upload (a drop is
-  claim-only), the verification jury / commit-reveal / ML (votes apply directly), Coins staking /
-  dare-stake escrow, and real-time transport (no WebSocket — polling/animation only).
+- **Stubbed (designed in `DESIGN.md`, not built):** auth (single demo user); video upload (proof is a
+  claim URL); **real ML + the staked jury / commit-reveal** (the AI is a deterministic
+  `StubProofScreener` and the "crowd" is the single demo user — the threshold/override path is real);
+  Coins staking / mutual-stake duels / escrow; and real-time transport (no WebSocket).
 
 ---
 
 ## 6. Tests (`backend.Tests/`)
 
-11 xUnit integration tests over the real HTTP surface, each against an **isolated in-memory SQLite**
-database (`TestApiFactory` swaps the connection via `WebApplicationFactory`). They cover the feed,
-the vote loop **and its failure paths** (invalid verdict → 400, unknown drop → 404, double-vote
-idempotency), the season split, leaderboard ordering, the profile, and posting a dare (incl.
-too-short challenge → 400).
+21 xUnit integration tests over the real HTTP surface, each against an **isolated in-memory SQLite**
+database, a controllable `FakeClock`, and a forceable `FakeScreener` (`TestApiFactory`). They cover
+the feed, the vote loop **and its failure paths** (invalid verdict → 400, unknown drop → 404,
+double-vote idempotency), the **verification engine** (AI auto-verify / auto-reject, and the 60s
+crowd override → verified|rejected), the **accept → proof → forfeit** flow, the **entry-fee** pool,
+the **ledger-summed** balance, the season split, leaderboard ordering, the profile, and composing a
+dare (incl. too-short challenge → 400).
 
 ```powershell
 cd backend.Tests
@@ -185,9 +212,10 @@ dotnet test
 - **Economy is non-cashable Coins, not cash (DESIGN.md ADR-021).** Amounts are whole **Coins**
   (1 vote = 3) and a platform-funded contest — never real money (ADR-017's gambling /
   money-transmitter firewall stands). The UI and backend now express Coins throughout (no `$`).
-- **The pool accounting is a demo artifact.** Each vote both *credits* the voter 3 Coins **and**
-  *mints* 3 Coins into the pool (in the vote handler) — there's no modeled revenue inflow. A real
-  pool is funded from sponsors/cosmetics/brand pools (DESIGN.md §5.10), not from votes.
+- **The pool is funded by entry fees (DESIGN.md ADR-023).** Accepting a **ranked** dare debits the
+  player's Coins (a sink) and credits the season pool by the dare's entry fee; the seeded pool
+  represents accumulated fees. Votes reward the **voter** (3 Coins) and no longer mint into the pool
+  (the earlier vote→pool minting demo artifact was removed). Payout stays a platform-funded contest.
 - **Single demo user, no auth.** Everything "you" do is attributed to `id 1`.
 - **No migrations.** Schema changes require deleting `dare.db`.
 - **Prize-pool split is 30 / 50 / 20** (voters / creators / platform → 80% to players) — the

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Eye, Check, X, Flame, Coins, Zap, Play } from "lucide-react";
-import { apiGet, apiPost, type FeedCard, type VoteResult, type Season } from "../lib/api";
+import { apiGet, apiPost, type FeedCard, type VoteResult, type Season, type OpenDare } from "../lib/api";
+import AcceptDareModal from "./AcceptDareModal";
 
 function sg(top: string, mid: string, bot: string, hi = 0.44) {
   return [
@@ -13,6 +14,7 @@ function sg(top: string, mid: string, bot: string, hi = 0.44) {
 
 type Card = {
   id: number;
+  dareId?: number;
   playerNo: string;
   title: string;
   user: string;
@@ -21,6 +23,7 @@ type Card = {
   pts: number;
   duration: string;
   views: string;
+  status?: string;
   verified: boolean;
   trending: boolean;
   category: string;
@@ -118,6 +121,15 @@ function GridCard({ card, onTap }: { card: Card; onTap: () => void }) {
         <span className="text-[8px] font-black uppercase tracking-wide text-[#F2E4CC]/70">{card.category}</span>
       </div>
 
+      {/* Verification status — a drop in the 60s crowd window is "live" (Humans vs The Machine) */}
+      {card.status === "voting" && (
+        <div className="absolute left-2.5 px-2 py-0.5 flex items-center gap-1 z-10"
+          style={{ top: 30, background: "rgba(255,61,110,0.92)", borderRadius: 7, border: "1px solid rgba(255,160,180,0.6)", boxShadow: "0 2px 0 rgba(150,20,50,0.6)" }}>
+          <span className="live-dot inline-flex rounded-full" style={{ height: 5, width: 5, background: "#F2E4CC", color: "#F2E4CC" }} />
+          <span className="text-[7px] font-black uppercase tracking-wide text-[#F2E4CC]">Crowd vote</span>
+        </div>
+      )}
+
       {/* Trending badge — top right */}
       {card.trending && (
         <div className="absolute top-2.5 right-2.5 px-2 py-1 flex items-center gap-1"
@@ -173,7 +185,7 @@ function GridCard({ card, onTap }: { card: Card; onTap: () => void }) {
   );
 }
 
-function VoteModal({ card, onClose, onVoted }: { card: Card; onClose: () => void; onVoted?: (dropId: number, votes: number) => void }) {
+function VoteModal({ card, onClose, onVoted }: { card: Card; onClose: () => void; onVoted?: (dropId: number, votes: number, poolContrib: number) => void }) {
   const [voted, setVoted] = useState<"pass" | "fail" | null>(null);
   const [showEarned, setShowEarned] = useState(false);
 
@@ -184,7 +196,7 @@ function VoteModal({ card, onClose, onVoted }: { card: Card; onClose: () => void
     setTimeout(() => setShowEarned(false), 3000);
     try {
       const r = await apiPost<VoteResult>(`/api/drops/${card.id}/vote`, { verdict: v });
-      onVoted?.(card.id, r.votes);
+      onVoted?.(card.id, r.votes, r.poolContrib);
     } catch {
       /* keep the optimistic UI even if the backend is unavailable */
     }
@@ -300,16 +312,21 @@ function VoteModal({ card, onClose, onVoted }: { card: Card; onClose: () => void
 
 export default function DareFeed({ refreshKey = 0 }: { refreshKey?: number }) {
   const [prizePool, setPrizePool] = useState(14_847_000);
+  const [daysLeft, setDaysLeft] = useState(12);
   const [cards, setCards] = useState<Card[]>(FALLBACK);
+  const [openDares, setOpenDares] = useState<OpenDare[]>([]);
   const [activeCard, setActiveCard] = useState<Card | null>(null);
+  const [acceptDare, setAcceptDare] = useState<OpenDare | null>(null);
+  const [localKey, setLocalKey] = useState(0);
 
-  /* Load the feed + season prize pool from the backend (mock data is the fallback) */
+  /* Load the feed + season pool + open dares from the backend (mock data is the fallback) */
   useEffect(() => {
     let alive = true;
-    apiGet<FeedCard[]>("/api/feed").then((d) => { if (alive && d?.length) setCards(d as Card[]); }).catch(() => {});
-    apiGet<Season>("/api/season/current").then((s) => { if (alive && s) setPrizePool(s.prizePool); }).catch(() => {});
+    apiGet<FeedCard[]>("/api/drops").then((d) => { if (alive && d?.length) setCards(d as Card[]); }).catch(() => {});
+    apiGet<Season>("/api/seasons/current").then((s) => { if (alive && s) { setPrizePool(s.prizePool); setDaysLeft(s.daysLeft); } }).catch(() => {});
+    apiGet<OpenDare[]>("/api/dares").then((d) => { if (alive && d) setOpenDares(d); }).catch(() => {});
     return () => { alive = false; };
-  }, [refreshKey]);
+  }, [refreshKey, localKey]);
 
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
@@ -320,9 +337,9 @@ export default function DareFeed({ refreshKey = 0 }: { refreshKey?: number }) {
     return () => clearTimeout(t);
   }, []);
 
-  /* Reflect a persisted vote immediately on the card */
-  function handleVoted(dropId: number, votes: number) {
-    setCards((cs) => cs.map((c) => (c.id === dropId ? { ...c, votes, poolContrib: votes * 3 } : c)));
+  /* Reflect a persisted vote immediately on the card (pool contribution comes from the server) */
+  function handleVoted(dropId: number, votes: number, poolContrib: number) {
+    setCards((cs) => cs.map((c) => (c.id === dropId ? { ...c, votes, poolContrib } : c)));
   }
 
   return (
@@ -342,7 +359,7 @@ export default function DareFeed({ refreshKey = 0 }: { refreshKey?: number }) {
           ].join(", "),
         }}>
         <div className="flex items-center justify-between px-5 py-3.5">
-          <span className="text-[9px] font-black tracking-[0.3em] uppercase text-[#F2E4CC]/75">SEASON 4 · 12 DAYS LEFT</span>
+          <span className="text-[9px] font-black tracking-[0.3em] uppercase text-[#F2E4CC]/75">SEASON 4 · {daysLeft} DAYS LEFT</span>
           <span className="text-[17px] font-black tabular-nums text-[#F2E4CC]"
             style={{ textShadow: "0 2px 0 rgba(8,61,56,0.5)" }}>
             ◊{prizePool.toLocaleString()}
@@ -360,6 +377,29 @@ export default function DareFeed({ refreshKey = 0 }: { refreshKey?: number }) {
           <p className="text-[9px] text-[#F2E4CC]/35">80% back to players</p>
         </div>
       </div>
+
+      {/* Open dares — accept one to start a 20-minute proof deadline (ACCEPT step) */}
+      {openDares.length > 0 && (
+        <div className="pt-1">
+          <div className="flex items-center gap-3 px-5 pt-2 pb-2">
+            <div style={{ width: 4, height: 18, borderRadius: 4, background: sg("rgba(245,140,160,0.98)", "rgba(232,80,106,0.97)", "rgba(122,18,48,1.0)", 0.42), boxShadow: "0 2px 0 #7A1230" }} />
+            <span className="text-[12px] font-black uppercase tracking-[0.18em] text-[#F2E4CC]" style={{ textShadow: "0 2px 0 rgba(24,8,24,0.35)" }}>Open Dares</span>
+          </div>
+          <div className="flex gap-3 overflow-x-auto px-4 pb-1" style={{ scrollbarWidth: "none" }}>
+            {openDares.map((d) => (
+              <button key={d.id} onClick={() => setAcceptDare(d)} className="shrink-0 text-left px-4 py-3 rounded-2xl"
+                style={{ minWidth: 200, background: sg(d.glTop, d.glMid, d.glBot, d.hi), border: `1px solid ${d.border}`, boxShadow: `inset 0 3px 0 rgba(255,255,255,${d.hi + 0.06}), 0 5px 0 ${d.deep}`, transform: "translateY(-2px)" }}>
+                <p className="text-[12px] font-black text-[#F2E4CC] leading-snug" style={{ textShadow: "0 1px 0 rgba(0,0,0,0.4)" }}>{d.title}</p>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-[8px] font-black uppercase tracking-wide px-2 py-0.5 rounded-full text-[#180818]" style={{ background: "rgba(255,255,255,0.72)" }}>{d.category}</span>
+                  <span className="text-[9px] font-black text-[#F2E4CC]">+{d.repReward} rep</span>
+                  {d.isRanked && d.entryFee > 0 && <span className="text-[9px] font-black text-[#F0C040]">◊{d.entryFee} entry</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Section header */}
       <div className="flex items-center gap-3 px-5 pt-4 pb-3">
@@ -389,6 +429,18 @@ export default function DareFeed({ refreshKey = 0 }: { refreshKey?: number }) {
 
       {/* Vote modal */}
       {activeCard && <VoteModal card={activeCard} onClose={() => setActiveCard(null)} onVoted={handleVoted} />}
+
+      {/* Accept modal — accepts an open dare, then submits proof through the verification engine */}
+      {acceptDare && (
+        <AcceptDareModal
+          dareId={acceptDare.id}
+          dare={acceptDare.title}
+          category={acceptDare.category}
+          rep={acceptDare.repReward}
+          onClose={() => setAcceptDare(null)}
+          onResolved={() => { setAcceptDare(null); setLocalKey((k) => k + 1); }}
+        />
+      )}
     </div>
   );
 }

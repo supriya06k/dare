@@ -52,11 +52,13 @@ export default function SeasonBoard() {
   /* Load the season pool + leaderboard from the backend (mock is the fallback) */
   useEffect(() => {
     let alive = true;
-    apiGet<Season>("/api/season/current").then((s) => {
-      if (alive && s) { setPrizePool(s.prizePool); setDaysLeft(s.daysLeft); }
-    }).catch(() => {});
-    apiGet<LeaderboardRow[]>("/api/leaderboard").then((d) => {
-      if (alive && d?.length) setPlayers(d as Player[]);
+    apiGet<Season>("/api/seasons/current").then((s) => {
+      if (!alive || !s) return;
+      setPrizePool(s.prizePool);
+      setDaysLeft(s.daysLeft);
+      return apiGet<LeaderboardRow[]>(`/api/seasons/${s.number}/leaderboard`).then((d) => {
+        if (alive && d?.length) setPlayers(d as Player[]);
+      });
     }).catch(() => {});
     return () => { alive = false; };
   }, []);

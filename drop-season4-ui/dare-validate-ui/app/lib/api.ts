@@ -24,6 +24,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 // ── Shared response shapes ────────────────────────────────────────────────────
 export type FeedCard = {
   id: number;
+  dareId: number;
   playerNo: string;
   title: string;
   user: string;
@@ -32,7 +33,10 @@ export type FeedCard = {
   pts: number;
   duration: string;
   views: string;
+  status: string;
   verified: boolean;
+  aiConfidence: number | null;
+  votingEndsAt: string | null;
   trending: boolean;
   category: string;
   glTop: string;
@@ -50,10 +54,11 @@ export type VoteResult = {
   verdict: "pass" | "fail";
   alreadyVoted: boolean;
   votes: number;
+  status: string;
   earned: number;
   myEarnings: number;
   myVotes: number;
-  prizePool: number;
+  poolContrib: number;
 };
 
 export type Season = {
@@ -95,6 +100,7 @@ export type Me = {
     creatorsHelped: number;
     payoutIn: number;
   };
+  forfeits: number;
   poolShare: number;
 };
 
@@ -119,3 +125,41 @@ export type LivePerformerDto = {
 };
 
 export type CreatedDare = FeedCard;
+
+export type OpenDare = {
+  id: number;
+  title: string;
+  category: string;
+  difficulty: string;
+  repReward: number;
+  entryFee: number;
+  isRanked: boolean;
+  isBrandDare: boolean;
+  expiresInSeconds: number;
+  glTop: string;
+  glMid: string;
+  glBot: string;
+  border: string;
+  deep: string;
+  hi: number;
+};
+
+export type AcceptResult = {
+  dropId: number;
+  dareId: number;
+  status: string;
+  deadlineAt: string;
+  secondsLeft: number;
+  entryFee: number;
+  prizePool: number;
+};
+
+export type LiveVoteResult = {
+  id: number;
+  verdict: "pass" | "fail";
+  passVotes: number;
+  failVotes: number;
+  earned: number;
+  myEarnings: number;
+  myVotes: number;
+};
