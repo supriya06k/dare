@@ -118,22 +118,35 @@ func Verify(ctx context.Context, db *pgxpool.Pool, hub *ws.Hub, notifier *notify
 	if err != nil {
 		return err
 	}
-	if _, err := db.Exec(ctx, `UPDATE drops SET status='verified' WHERE id=$1`, dropID); err != nil {
+
+	// Award atomically: a partial failure must not leave a drop verified-but-unrewarded.
+	tx, err := db.Begin(ctx)
+	if err != nil {
 		return err
 	}
-	if _, err := db.Exec(ctx, `UPDATE dares SET total_verified=total_verified+1 WHERE id=$1`, d.dareID); err != nil {
+	defer tx.Rollback(ctx) // no-op once committed
+
+	if _, err := tx.Exec(ctx, `UPDATE drops SET status='verified' WHERE id=$1`, dropID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE dares SET total_verified=total_verified+1 WHERE id=$1`, d.dareID); err != nil {
 		return err
 	}
 	if d.userID != nil && d.repReward > 0 {
-		if _, err := db.Exec(ctx, `UPDATE users SET rep=rep+$1, challenges=challenges+1 WHERE id=$2`, d.repReward, *d.userID); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE users SET rep=rep+$1, challenges=challenges+1 WHERE id=$2`, d.repReward, *d.userID); err != nil {
 			return err
 		}
-		if _, err := db.Exec(ctx, `
+		if _, err := tx.Exec(ctx, `
 			INSERT INTO ledger (user_id, currency, amount, reason, ref_id, created_at)
 			VALUES ($1, 'score', $2, 'verified', $3, NOW())`, *d.userID, d.repReward, fmt.Sprintf("%d", dropID)); err != nil {
 			return err
 		}
 	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+
+	// Side-effects only after the award has committed.
 	hub.Broadcast(roomOf(d.dareID), "drop_status", ws.DropStatusUpdate{DropID: dropID, Status: "verified"})
 	if d.userID != nil && notifier != nil {
 		notifyToken(ctx, db, *d.userID, func(tok string) { notifier.DropVerified(ctx, tok, d.dareTitle) })
