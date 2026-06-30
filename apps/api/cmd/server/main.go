@@ -53,6 +53,10 @@ func main() {
 	// otherwise crowd-reject. Without this, drops the AI is unsure about stay in 'voting' forever.
 	go verification.NewResolver(pool, hub, notifier).Run(context.Background(), 10*time.Second)
 
+	if os.Getenv("FIREBASE_CREDENTIALS_FILE") == "" && os.Getenv("ALLOW_DEV_AUTH") != "true" {
+		slog.Warn("auth not configured — all logins will be rejected; set FIREBASE_CREDENTIALS_FILE (or ALLOW_DEV_AUTH=true for local dev)")
+	}
+
 	r := chi.NewRouter()
 	r.Use(chimw.RealIP)
 	r.Use(chimw.Recoverer)
@@ -86,8 +90,11 @@ func main() {
 		r.Route("/api/payouts", payouts.NewHandler(pool).Register)
 	})
 
-	// Internal — only reachable from AI worker (same private network on Fly.io)
-	r.Route("/internal", screening.NewHandler(pool, hub, notifier).Register)
+	// Internal — worker-only, gated by a shared secret (fails closed if INTERNAL_API_SECRET is unset).
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.Internal(os.Getenv("INTERNAL_API_SECRET")))
+		r.Route("/internal", screening.NewHandler(pool, hub, notifier).Register)
+	})
 
 	// WebSocket (auth via query param token)
 	r.Get("/ws/live/{dareId}", middleware.WSAuth(os.Getenv("JWT_SECRET"), hub.ServeWS))

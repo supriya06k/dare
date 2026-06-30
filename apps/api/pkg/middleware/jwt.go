@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"strings"
 
@@ -53,6 +54,9 @@ func WSAuth(secret string, next http.HandlerFunc) http.HandlerFunc {
 		}
 		claims := &Claims{}
 		_, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (any, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, apperr.ErrUnauthorized
+			}
 			return []byte(secret), nil
 		})
 		if err != nil {
@@ -69,4 +73,20 @@ func UserID(ctx context.Context) int64 {
 		return 0
 	}
 	return c.UserID
+}
+
+// Internal guards worker-only routes with a shared secret sent as the X-Internal-Token
+// header. Fails closed: if the secret is unset, every internal request is rejected.
+func Internal(secret string) func(http.Handler) http.Handler {
+	want := []byte(secret)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got := []byte(r.Header.Get("X-Internal-Token"))
+			if len(want) == 0 || subtle.ConstantTimeCompare(got, want) != 1 {
+				apperr.Write(w, apperr.ErrUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

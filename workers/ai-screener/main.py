@@ -46,6 +46,7 @@ CONCURRENCY     = int(os.getenv("SCREENER_CONCURRENCY", "3"))
 QUEUE_KEY       = "queue:screening"
 STUB_DEFER_CONFIDENCE = 0.50  # sub-threshold: stub/error verdicts defer to the crowd, never auto-verify
 REPORT_MAX_ATTEMPTS   = 4      # callback retries before giving up (a lost callback leaves a drop stuck 'pending')
+INTERNAL_API_SECRET   = os.getenv("INTERNAL_API_SECRET", "")  # shared secret for the API /internal callback
 
 GEMINI_PROMPT_TMPL = (
     "You are verifying a dare challenge video frame. The dare is: "
@@ -321,7 +322,7 @@ async def report_result(client: httpx.AsyncClient, result: ScreeningResult):
     delay = 1.0
     for attempt in range(1, REPORT_MAX_ATTEMPTS + 1):
         try:
-            resp = await client.post(url, json=payload, timeout=10)
+            resp = await client.post(url, json=payload, headers={"X-Internal-Token": INTERNAL_API_SECRET}, timeout=10)
             resp.raise_for_status()
             return
         except Exception as e:
