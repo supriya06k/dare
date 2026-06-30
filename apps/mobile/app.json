@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "Dare",
+    "slug": "dare",
+    "version": "1.0.0",
+    "scheme": "dare",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0a0a0a",
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#f59e0b"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Dare needs camera access to record your challenge videos."
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.dare.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Dare needs microphone access to record your challenge videos."
+      }
+    },
+    "android": {
+      "package": "com.dare.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0a0a",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

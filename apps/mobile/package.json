@@ -1,0 +1,46 @@
+{
+  "name": "mobile",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "@gorhom/bottom-sheet": "^5.2.14",
+    "@react-native-firebase/app": "^24.1.1",
+    "@react-native-firebase/auth": "^24.1.1",
+    "@shopify/flash-list": "^2.3.2",
+    "@tanstack/react-query": "^5.101.0",
+    "expo": "~56.0.12",
+    "expo-blur": "^56.0.3",
+    "expo-camera": "^56.0.8",
+    "expo-file-system": "^56.0.8",
+    "expo-haptics": "^56.0.3",
+    "expo-image": "^56.0.11",
+    "expo-notifications": "^56.0.18",
+    "expo-router": "^56.2.11",
+    "expo-secure-store": "^56.0.4",
+    "expo-status-bar": "~56.0.4",
+    "expo-video": "^56.1.4",
+    "lucide-react-native": "^1.21.0",
+    "react": "19.2.3",
+    "react-native": "0.85.3",
+    "react-native-gesture-handler": "^3.0.2",
+    "react-native-reanimated": "^4.4.1",
+    "react-native-svg": "^15.15.5",
+    "zod": "^3.25.76",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "private": true,
+  "allowScripts": {
+    "@firebase/util": "true",
+    "protobufjs": "true"
+  }
+}
