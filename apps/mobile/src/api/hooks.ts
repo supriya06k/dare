@@ -140,7 +140,7 @@ export function usePayouts() {
 export function useRequestPayout() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { amountUsd: number; provider: "stripe" | "razorpay" }) =>
+    mutationFn: (body: { provider: "stripe" | "razorpay"; amount_usd?: number; amount_inr?: number }) =>
       api.post<Payout>("/api/payouts/request", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["payouts"] }),
   });

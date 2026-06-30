@@ -15,6 +15,7 @@ const STATUS_LABEL: Record<string, string> = {
   verified: "Verified ✓",
   ai_rejected: "AI rejected",
   crowd_rejected: "Crowd rejected",
+  rejected: "Rejected",
   forfeited: "Forfeited",
 };
 
@@ -25,6 +26,7 @@ const STATUS_COLOR: Record<string, string> = {
   verified: palette.green,
   ai_rejected: palette.red,
   crowd_rejected: palette.red,
+  rejected: palette.red,
   forfeited: palette.textMuted,
 };
 
@@ -38,7 +40,7 @@ export default function MeScreen() {
     ["accepted", "pending", "voting"].includes(d.status)
   );
   const pastDrops = drops.filter((d) =>
-    ["verified", "ai_rejected", "crowd_rejected", "forfeited"].includes(d.status)
+    ["verified", "ai_rejected", "crowd_rejected", "rejected", "forfeited"].includes(d.status)
   );
 
   if (!profile) return null;
