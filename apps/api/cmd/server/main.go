@@ -18,6 +18,7 @@ import (
 	"github.com/dare-app/api/internal/screening"
 	"github.com/dare-app/api/internal/seasons"
 	"github.com/dare-app/api/internal/users"
+	"github.com/dare-app/api/internal/verification"
 	"github.com/dare-app/api/internal/ws"
 	"github.com/dare-app/api/pkg/cache"
 	"github.com/dare-app/api/pkg/db"
@@ -47,6 +48,10 @@ func main() {
 		slog.Warn("fcm init failed — push notifications disabled", "err", err)
 		notifier = notify.NewStub()
 	}
+
+	// Resolve crowd-vote windows whose timer has elapsed: verify on quorum + consensus,
+	// otherwise crowd-reject. Without this, drops the AI is unsure about stay in 'voting' forever.
+	go verification.NewResolver(pool, hub, notifier).Run(context.Background(), 10*time.Second)
 
 	r := chi.NewRouter()
 	r.Use(chimw.RealIP)

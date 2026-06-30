@@ -97,7 +97,7 @@ func (h *Handler) Mine(w http.ResponseWriter, r *http.Request) {
 		FROM drops dr
 		JOIN dares da ON dr.dare_id = da.id
 		WHERE dr.user_id = $1
-		AND dr.status IN ('accepted','voting','pending','verified','rejected','ai_rejected','forfeited')
+		AND dr.status IN ('accepted','voting','pending','verified','rejected','crowd_rejected','ai_rejected','forfeited')
 		ORDER BY dr.created_at DESC LIMIT 40
 	`, userID)
 	if err != nil {
@@ -270,12 +270,17 @@ func (h *Handler) Vote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify drop is in voting state
+	// Verify drop is in voting state and not authored by the voter.
 	var dareID int64
+	var authorID *int64
 	err := h.db.QueryRow(r.Context(),
-		`SELECT dare_id FROM drops WHERE id=$1 AND status='voting'`, dropID).Scan(&dareID)
+		`SELECT dare_id, user_id FROM drops WHERE id=$1 AND status='voting'`, dropID).Scan(&dareID, &authorID)
 	if err != nil {
 		apperr.Write(w, apperr.ErrNotFound)
+		return
+	}
+	if authorID != nil && *authorID == userID {
+		apperr.Write(w, apperr.New(http.StatusForbidden, "cannot vote on your own drop"))
 		return
 	}
 
