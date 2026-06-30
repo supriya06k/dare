@@ -1,0 +1,16 @@
+{
+  "name": "dare-monorepo",
+  "private": true,
+  "workspaces": ["apps/mobile", "packages/*"],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "api:dev": "cd apps/api && go run ./cmd/server",
+    "api:migrate": "cd apps/api && go run ./cmd/migrate up",
+    "worker:dev": "cd workers/ai-screener && python -m uvicorn main:app --reload --port 8001"
+  },
+  "devDependencies": {
+    "turbo": "^2.9.18"
+  }
+}

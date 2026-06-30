@@ -1,0 +1,21 @@
+node_modules
+.turbo
+dist
+.expo
+*.env
+*.env.local
+*.env.*.local
+
+# Go
+apps/api/bin
+apps/api/tmp
+
+# Python
+workers/ai-screener/__pycache__
+workers/ai-screener/.venv
+workers/ai-screener/*.pyc
+
+# DB
+*.db
+*.db-wal
+*.db-shm
