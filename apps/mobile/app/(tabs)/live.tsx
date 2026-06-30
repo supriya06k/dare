@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { FlashList } from "@shopify/flash-list";
-import { useLiveSessions } from "../../src/api/hooks";
+import { useLiveSessions, useLiveVote } from "../../src/api/hooks";
 import { useWebSocket } from "../../src/hooks/useWebSocket";
 import { VoteSheet } from "../../src/components/sheets/VoteSheet";
 import { palette, spacing, font, radii } from "../../src/lib/tokens";
-import type { LiveSession, VoteUpdate, Drop } from "../../src/api/types";
+import type { LiveSession, VoteUpdate } from "../../src/api/types";
 
 interface LiveCardProps {
   session: LiveSession;
@@ -36,7 +36,7 @@ function LiveCard({ session, onVote }: LiveCardProps) {
 
       <View style={styles.counts}>
         <Text style={styles.passCount}>{session.passVotes} pass</Text>
-        <Text style={styles.earnBadge}>+$0.006 per vote</Text>
+        <Text style={styles.earnBadge}>+3 Coins per vote</Text>
         <Text style={styles.failCount}>{session.failVotes} fail</Text>
       </View>
     </Pressable>
@@ -66,34 +66,14 @@ function LiveCardConnected({
 export default function LiveScreen() {
   const { data: sessions = [], isLoading } = useLiveSessions();
   const [activeSession, setActiveSession] = useState<LiveSession | null>(null);
-
-  const fakeDrop: Drop | null = activeSession
-    ? {
-        dropId: activeSession.id,
-        dareId: activeSession.id,
-        slug: "",
-        title: activeSession.challenge,
-        category: "",
-        difficulty: "",
-        repReward: 0,
-        status: "voting",
-        proofUrl: null,
-        aiConfidence: null,
-        passVotes: activeSession.passVotes,
-        failVotes: activeSession.failVotes,
-        deadlineAt: new Date(Date.now() + activeSession.endsInSeconds * 1000).toISOString(),
-        secondsLeft: activeSession.endsInSeconds,
-        createdAt: new Date().toISOString(),
-        colorKey: activeSession.colorKey,
-      }
-    : null;
+  const { mutate: liveVote, isPending } = useLiveVote();
 
   return (
     <View style={styles.root}>
       <View style={styles.header}>
         <Text style={styles.heading}>Live arena</Text>
         <View style={styles.earnBanner}>
-          <Text style={styles.earnBannerText}>Live votes earn 2× points</Text>
+          <Text style={styles.earnBannerText}>Live votes earn Coins</Text>
         </View>
       </View>
 
@@ -115,11 +95,20 @@ export default function LiveScreen() {
         }
       />
 
-      {fakeDrop && activeSession && (
+      {activeSession && (
         <VoteSheet
-          drop={fakeDrop}
+          title={activeSession.challenge}
+          passVotes={activeSession.passVotes}
+          failVotes={activeSession.failVotes}
+          pending={isPending}
+          earnLabel="+3 Coins per live vote"
+          onVote={(v) =>
+            liveVote(
+              { id: activeSession.id, verdict: v },
+              { onSuccess: () => setActiveSession(null) }
+            )
+          }
           onClose={() => setActiveSession(null)}
-          onVoted={() => setActiveSession(null)}
         />
       )}
     </View>

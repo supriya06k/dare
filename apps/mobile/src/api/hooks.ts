@@ -128,6 +128,15 @@ export function useLiveSessions() {
   });
 }
 
+export function useLiveVote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, verdict }: { id: number; verdict: "pass" | "fail" }) =>
+      api.post(`/api/live/${id}/vote`, { verdict }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["profile"] }),
+  });
+}
+
 // ─── Payouts ─────────────────────────────────────────────────────────────────
 
 export function usePayouts() {

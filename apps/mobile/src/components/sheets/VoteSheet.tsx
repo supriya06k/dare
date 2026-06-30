@@ -3,32 +3,23 @@ import { View, Text, StyleSheet } from "react-native";
 import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
 import { PressButton } from "../ui/PressButton";
 import { palette, spacing, font, radii } from "../../lib/tokens";
-import { useVote } from "../../api/hooks";
-import type { Drop } from "../../api/types";
 
 interface Props {
-  drop: Drop;
+  title: string;
+  passVotes: number;
+  failVotes: number;
+  onVote: (verdict: "pass" | "fail") => void;
+  pending?: boolean;
+  earnLabel?: string;
   onClose: () => void;
-  onVoted?: () => void;
 }
 
-export function VoteSheet({ drop, onClose, onVoted }: Props) {
+export function VoteSheet({ title, passVotes, failVotes, onVote, pending, earnLabel, onClose }: Props) {
   const sheetRef = useRef<BottomSheet>(null);
-  const { mutate: vote, isPending } = useVote();
-
-  const handleVote = (v: "pass" | "fail") => {
-    vote({ dropId: drop.dropId, verdict: v }, {
-      onSuccess: () => {
-        onVoted?.();
-        sheetRef.current?.close();
-      },
-    });
-  };
-
   const handleClose = useCallback(() => onClose(), [onClose]);
 
-  const total = drop.passVotes + drop.failVotes;
-  const passRatio = total > 0 ? drop.passVotes / total : 0;
+  const total = passVotes + failVotes;
+  const passRatio = total > 0 ? passVotes / total : 0;
 
   return (
     <BottomSheet
@@ -41,34 +32,34 @@ export function VoteSheet({ drop, onClose, onVoted }: Props) {
     >
       <BottomSheetView style={styles.content}>
         <Text style={styles.title}>Cast your vote</Text>
-        <Text style={styles.sub} numberOfLines={2}>{drop.title}</Text>
+        <Text style={styles.sub} numberOfLines={2}>{title}</Text>
 
         <View style={styles.bar}>
           <View style={[styles.barFill, { flex: passRatio }]} />
           <View style={[styles.barFail, { flex: 1 - passRatio }]} />
         </View>
         <View style={styles.counts}>
-          <Text style={styles.passCount}>{drop.passVotes} pass</Text>
-          <Text style={styles.failCount}>{drop.failVotes} fail</Text>
+          <Text style={styles.passCount}>{passVotes} pass</Text>
+          <Text style={styles.failCount}>{failVotes} fail</Text>
         </View>
 
         <View style={styles.buttons}>
           <PressButton
             label="PASS ✓"
-            onPress={() => handleVote("pass")}
-            loading={isPending}
+            onPress={() => onVote("pass")}
+            loading={pending}
             style={styles.passBtn}
           />
           <PressButton
             label="FAIL ✗"
-            onPress={() => handleVote("fail")}
-            loading={isPending}
+            onPress={() => onVote("fail")}
+            loading={pending}
             variant="danger"
             style={styles.failBtn}
           />
         </View>
 
-        <Text style={styles.earn}>+$0.003 per vote · live dares earn +$0.006</Text>
+        <Text style={styles.earn}>{earnLabel ?? "+3 Coins per vote"}</Text>
       </BottomSheetView>
     </BottomSheet>
   );

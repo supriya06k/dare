@@ -8,7 +8,7 @@ import {
   Alert,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
-import { useDare, useAcceptDare, useMyDrops } from "../../src/api/hooks";
+import { useDare, useAcceptDare, useMyDrops, useVote } from "../../src/api/hooks";
 import { useDareStore } from "../../src/store/dareStore";
 import { VoteSheet } from "../../src/components/sheets/VoteSheet";
 import { PressButton } from "../../src/components/ui/PressButton";
@@ -32,6 +32,7 @@ export default function DareDetailScreen() {
   const { acceptedDareIds, markAccepted } = useDareStore();
 
   const { mutate: accept, isPending: accepting } = useAcceptDare();
+  const { mutate: vote, isPending: voting } = useVote();
   const [voteDrop, setVoteDrop] = useState<Drop | null>(null);
 
   if (isLoading || !dare) {
@@ -146,9 +147,17 @@ export default function DareDetailScreen() {
 
       {voteDrop && (
         <VoteSheet
-          drop={voteDrop}
+          title={voteDrop.title}
+          passVotes={voteDrop.passVotes}
+          failVotes={voteDrop.failVotes}
+          pending={voting}
+          onVote={(v) =>
+            vote(
+              { dropId: voteDrop.dropId, verdict: v },
+              { onSuccess: () => setVoteDrop(null) }
+            )
+          }
           onClose={() => setVoteDrop(null)}
-          onVoted={() => setVoteDrop(null)}
         />
       )}
     </View>
