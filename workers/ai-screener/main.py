@@ -44,6 +44,8 @@ GEMINI_API_KEY  = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL    = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 CONCURRENCY     = int(os.getenv("SCREENER_CONCURRENCY", "3"))
 QUEUE_KEY       = "queue:screening"
+STUB_DEFER_CONFIDENCE = 0.50  # sub-threshold: stub/error verdicts defer to the crowd, never auto-verify
+REPORT_MAX_ATTEMPTS   = 4      # callback retries before giving up (a lost callback leaves a drop stuck 'pending')
 
 GEMINI_PROMPT_TMPL = (
     "You are verifying a dare challenge video frame. The dare is: "
@@ -210,11 +212,12 @@ async def screen(job: ScreeningJob) -> ScreeningResult:
         return _stub_score(job)
     except Exception as e:
         log.exception("screen crashed drop=%d: %s", job.dropId, e)
+        # On error, never auto-verify — defer to the crowd with a sub-threshold score.
         return ScreeningResult(
             dropId=job.dropId,
-            pass_=True,
-            confidence=0.60,
-            reason="screener_error_fallback",
+            pass_=False,
+            confidence=STUB_DEFER_CONFIDENCE,
+            reason="screener_error — routed to crowd",
         )
 
 
@@ -293,38 +296,43 @@ async def _score_with_gemini(frame_bytes: bytes, job: ScreeningJob):
 
 
 def _stub_score(job: ScreeningJob) -> ScreeningResult:
-    proof = job.r2Key or job.proofUrl or ""
-    if proof.startswith("claim://"):
-        confidence = 0.60
-    else:
-        h = 2166136261
-        for c in f"{job.dareTitle}|{proof}".encode():
-            h ^= c
-            h = (h * 16777619) & 0xFFFFFFFF
-        confidence = round(0.55 + (h % 1000) / 1000 * 0.44, 2)
+    # No real AI is available, and a stub cannot judge a video — so it must NOT
+    # auto-verify. Emit a sub-threshold confidence so every drop is routed to the
+    # crowd (the API auto-resolves only at confidence >= 0.85).
     return ScreeningResult(
         dropId=job.dropId,
-        pass_=True,
-        confidence=confidence,
-        reason="stub_screener",
+        pass_=False,
+        confidence=STUB_DEFER_CONFIDENCE,
+        reason="stub: no AI configured — routed to crowd",
     )
 
 
 # ---- Callback to Go ---------------------------------------------------------
 
 async def report_result(client: httpx.AsyncClient, result: ScreeningResult):
-    try:
-        await client.post(
-            f"{API_URL}/internal/drops/{result.dropId}/screening-result",
-            json={
-                "pass":       result.pass_,
-                "confidence": result.confidence,
-                "reason":     result.reason,
-            },
-            timeout=10,
-        )
-    except Exception as e:
-        log.error("report failed drop=%d: %s", result.dropId, e)
+    payload = {
+        "pass":       result.pass_,
+        "confidence": result.confidence,
+        "reason":     result.reason,
+    }
+    url = f"{API_URL}/internal/drops/{result.dropId}/screening-result"
+    # Retry with backoff: a lost callback leaves the drop stuck in 'pending', so a
+    # transient API/network failure (or a non-2xx) must not silently drop the verdict.
+    delay = 1.0
+    for attempt in range(1, REPORT_MAX_ATTEMPTS + 1):
+        try:
+            resp = await client.post(url, json=payload, timeout=10)
+            resp.raise_for_status()
+            return
+        except Exception as e:
+            if attempt == REPORT_MAX_ATTEMPTS:
+                log.error("report failed permanently drop=%d after %d attempts: %s",
+                          result.dropId, attempt, e)
+                return
+            log.warning("report retry drop=%d attempt=%d/%d in %.1fs: %s",
+                        result.dropId, attempt, REPORT_MAX_ATTEMPTS, delay, e)
+            await asyncio.sleep(delay)
+            delay *= 2
 
 
 # ---- Health -----------------------------------------------------------------
