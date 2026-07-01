@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -31,18 +32,18 @@ func (h *Handler) Register(r chi.Router) {
 }
 
 type LiveSession struct {
-	ID           int64  `json:"id"`
-	PlayerNo     string `json:"playerNo"`
-	Initials     string `json:"initials"`
-	Name         string `json:"name"`
-	City         string `json:"city"`
-	SeasonRank   int    `json:"seasonRank"`
-	Challenge    string `json:"challenge"`
-	EndsInSeconds int   `json:"endsInSeconds"`
-	Viewers      int    `json:"viewers"`
-	PassVotes    int    `json:"passVotes"`
-	FailVotes    int    `json:"failVotes"`
-	ColorKey     string `json:"colorKey"`
+	ID            int64  `json:"id"`
+	PlayerNo      string `json:"playerNo"`
+	Initials      string `json:"initials"`
+	Name          string `json:"name"`
+	City          string `json:"city"`
+	SeasonRank    int    `json:"seasonRank"`
+	Challenge     string `json:"challenge"`
+	EndsInSeconds int    `json:"endsInSeconds"`
+	Viewers       int    `json:"viewers"`
+	PassVotes     int    `json:"passVotes"`
+	FailVotes     int    `json:"failVotes"`
+	ColorKey      string `json:"colorKey"`
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -95,9 +96,10 @@ func (h *Handler) Vote(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// One vote per user per session (Redis dedup; live sessions are ephemeral).
+	voteKey := fmt.Sprintf("livevote:%d:%d", id, userID)
 	first := true
 	if h.rdb != nil {
-		if ok, err := h.rdb.SetNX(r.Context(), fmt.Sprintf("livevote:%d:%d", id, userID), 1, 6*time.Hour).Result(); err == nil {
+		if ok, err := h.rdb.SetNX(r.Context(), voteKey, 1, 6*time.Hour).Result(); err == nil {
 			first = ok
 		}
 	}
@@ -108,11 +110,15 @@ func (h *Handler) Vote(w http.ResponseWriter, r *http.Request) {
 		if req.Verdict == "fail" {
 			col = "fail_votes"
 		}
-		h.db.Exec(r.Context(), `UPDATE live_sessions SET `+col+`=`+col+`+1 WHERE id=$1`, id)
-		h.db.Exec(r.Context(), `
-			INSERT INTO ledger (user_id, currency, amount, reason, created_at)
-			VALUES ($1, 'coins', 3, $2, NOW())`, userID, fmt.Sprintf("live_vote:%d", id))
-		h.db.Exec(r.Context(), `UPDATE users SET votes_given=votes_given+1 WHERE id=$1`, userID)
+		// Tally + coin award + votes_given atomically. On failure, release the dedup key
+		// so the user can retry — otherwise they'd be locked out with no vote recorded.
+		if err := h.recordLiveVote(r.Context(), id, userID, col); err != nil {
+			if h.rdb != nil {
+				h.rdb.Del(r.Context(), voteKey)
+			}
+			apperr.Write(w, apperr.New(http.StatusInternalServerError, "db error"))
+			return
+		}
 		earned = 3
 	}
 
@@ -130,4 +136,27 @@ func (h *Handler) Vote(w http.ResponseWriter, r *http.Request) {
 		"alreadyVoted": !first,
 		"coinsEarned":  earned,
 	})
+}
+
+// recordLiveVote applies the tally bump, coin award, and votes_given increment for a
+// live vote in a single transaction.
+func (h *Handler) recordLiveVote(ctx context.Context, sessionID, userID int64, col string) error {
+	tx, err := h.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `UPDATE live_sessions SET `+col+`=`+col+`+1 WHERE id=$1`, sessionID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO ledger (user_id, currency, amount, reason, created_at)
+		VALUES ($1, 'coins', 3, $2, NOW())`, userID, fmt.Sprintf("live_vote:%d", sessionID)); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE users SET votes_given=votes_given+1 WHERE id=$1`, userID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

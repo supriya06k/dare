@@ -9,12 +9,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dare-app/api/internal/ws"
-	"github.com/dare-app/api/pkg/apperr"
-	"github.com/dare-app/api/pkg/middleware"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/dare-app/api/internal/ws"
+	"github.com/dare-app/api/pkg/apperr"
+	"github.com/dare-app/api/pkg/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -40,22 +40,22 @@ func (h *Handler) Register(r chi.Router) {
 }
 
 type Drop struct {
-	DropID       int64   `json:"dropId"`
-	DareID       int64   `json:"dareId"`
-	Slug         string  `json:"slug"`
-	Title        string  `json:"title"`
-	Category     string  `json:"category"`
-	Difficulty   string  `json:"difficulty"`
-	RepReward    int     `json:"repReward"`
-	Status       string  `json:"status"`
-	ProofURL     *string `json:"proofUrl"`
+	DropID       int64    `json:"dropId"`
+	DareID       int64    `json:"dareId"`
+	Slug         string   `json:"slug"`
+	Title        string   `json:"title"`
+	Category     string   `json:"category"`
+	Difficulty   string   `json:"difficulty"`
+	RepReward    int      `json:"repReward"`
+	Status       string   `json:"status"`
+	ProofURL     *string  `json:"proofUrl"`
 	AIConfidence *float64 `json:"aiConfidence"`
-	PassVotes    int     `json:"passVotes"`
-	FailVotes    int     `json:"failVotes"`
-	DeadlineAt   *string `json:"deadlineAt"`
-	SecondsLeft  int     `json:"secondsLeft"`
-	CreatedAt    string  `json:"createdAt"`
-	ColorKey     string  `json:"colorKey"`
+	PassVotes    int      `json:"passVotes"`
+	FailVotes    int      `json:"failVotes"`
+	DeadlineAt   *string  `json:"deadlineAt"`
+	SecondsLeft  int      `json:"secondsLeft"`
+	CreatedAt    string   `json:"createdAt"`
+	ColorKey     string   `json:"colorKey"`
 }
 
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
@@ -152,6 +152,20 @@ type uploadURLResp struct {
 func (h *Handler) GetUploadURL(w http.ResponseWriter, r *http.Request) {
 	dropID := chi.URLParam(r, "id")
 	userID := middleware.UserID(r.Context())
+
+	// Only mint an upload URL for the caller's own drop that is awaiting proof.
+	dropIDInt, err := strconv.ParseInt(dropID, 10, 64)
+	if err != nil {
+		apperr.Write(w, apperr.ErrBadRequest)
+		return
+	}
+	var exists int
+	if err := h.db.QueryRow(r.Context(),
+		`SELECT 1 FROM drops WHERE id=$1 AND user_id=$2 AND status='accepted'`,
+		dropIDInt, userID).Scan(&exists); err != nil {
+		apperr.Write(w, apperr.New(http.StatusForbidden, "drop not found, not yours, or not awaiting proof"))
+		return
+	}
 
 	r2Key := fmt.Sprintf("proofs/%d/%s/%d.mp4", userID, dropID, time.Now().UnixNano())
 
@@ -284,34 +298,49 @@ func (h *Handler) Vote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Insert vote — unique constraint prevents double-voting
-	_, err = h.db.Exec(r.Context(), `
-		INSERT INTO votes (drop_id, voter_user_id, verdict, created_at)
-		VALUES ($1, $2, $3, NOW())
-	`, dropID, userID, req.Verdict)
-	if err != nil {
-		apperr.Write(w, apperr.New(http.StatusConflict, "already voted"))
-		return
-	}
-
-	// Update vote counters
+	// Record the vote, tally bump, coin award, and votes_given atomically — a partial
+	// failure must not miscount or miscredit. The unique (drop_id, voter_user_id)
+	// constraint makes the insert the idempotency guard.
 	col := "pass_votes"
 	if req.Verdict == "fail" {
 		col = "fail_votes"
 	}
-	h.db.Exec(r.Context(), `UPDATE drops SET `+col+`=`+col+`+1 WHERE id=$1`, dropID)
 
-	// Award coins to voter
-	h.db.Exec(r.Context(), `
+	tx, err := h.db.Begin(r.Context())
+	if err != nil {
+		apperr.Write(w, apperr.New(http.StatusInternalServerError, "db error"))
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	if _, err := tx.Exec(r.Context(), `
+		INSERT INTO votes (drop_id, voter_user_id, verdict, created_at)
+		VALUES ($1, $2, $3, NOW())
+	`, dropID, userID, req.Verdict); err != nil {
+		apperr.Write(w, apperr.New(http.StatusConflict, "already voted"))
+		return
+	}
+	var pass, fail int
+	if err := tx.QueryRow(r.Context(), `UPDATE drops SET `+col+`=`+col+`+1 WHERE id=$1
+		RETURNING pass_votes, fail_votes`, dropID).Scan(&pass, &fail); err != nil {
+		apperr.Write(w, apperr.New(http.StatusInternalServerError, "db error"))
+		return
+	}
+	if _, err := tx.Exec(r.Context(), `
 		INSERT INTO ledger (user_id, currency, amount, reason, created_at)
 		VALUES ($1, 'coins', 3, $2, NOW())
-	`, userID, fmt.Sprintf("vote:%d", dropID))
-	h.db.Exec(r.Context(), `UPDATE users SET votes_given=votes_given+1 WHERE id=$1`, userID)
-
-	// Fetch updated counts and broadcast
-	var pass, fail int
-	h.db.QueryRow(r.Context(),
-		`SELECT pass_votes, fail_votes FROM drops WHERE id=$1`, dropID).Scan(&pass, &fail)
+	`, userID, fmt.Sprintf("vote:%d", dropID)); err != nil {
+		apperr.Write(w, apperr.New(http.StatusInternalServerError, "db error"))
+		return
+	}
+	if _, err := tx.Exec(r.Context(), `UPDATE users SET votes_given=votes_given+1 WHERE id=$1`, userID); err != nil {
+		apperr.Write(w, apperr.New(http.StatusInternalServerError, "db error"))
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		apperr.Write(w, apperr.New(http.StatusInternalServerError, "db error"))
+		return
+	}
 
 	dareIDStr := strconv.FormatInt(dareID, 10)
 	h.hub.Broadcast(dareIDStr, "vote_update", ws.VoteUpdate{
