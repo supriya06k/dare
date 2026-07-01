@@ -20,6 +20,7 @@ import (
 	"github.com/dare-app/api/internal/users"
 	"github.com/dare-app/api/internal/ws"
 	"github.com/dare-app/api/pkg/cache"
+	"github.com/dare-app/api/pkg/config"
 	"github.com/dare-app/api/pkg/db"
 	"github.com/dare-app/api/pkg/middleware"
 	"github.com/go-chi/chi/v5"
@@ -30,6 +31,8 @@ import (
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
+
+	cfg := config.Load()
 
 	pool, err := db.Connect(os.Getenv("DATABASE_URL"))
 	if err != nil {
@@ -65,9 +68,16 @@ func main() {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	payoutsHandler := payouts.NewHandler(payouts.NewService(payouts.NewStore(pool), cfg.Payouts))
+	if cfg.Payouts.KYCWebhookSecret == "" {
+		slog.Warn("KYC_WEBHOOK_SECRET unset — KYC updates are disabled and payouts will stay blocked (fail closed)")
+	}
+
 	// Public routes
 	r.Post("/api/auth/otp/send", auth.NewHandler(pool).SendOTP)
 	r.Post("/api/auth/otp/verify", auth.NewHandler(pool).VerifyOTP)
+	// KYC provider webhook — gated by KYC_WEBHOOK_SECRET inside the handler; not user-callable.
+	r.Post("/webhooks/kyc", payoutsHandler.KYCWebhook)
 
 	// Protected routes
 	r.Group(func(r chi.Router) {
@@ -78,7 +88,7 @@ func main() {
 		r.Route("/api/users", users.NewHandler(pool).Register)
 		r.Route("/api/seasons", seasons.NewHandler(pool).Register)
 		r.Route("/api/live", live.NewHandler(pool, rdb, hub).Register)
-		r.Route("/api/payouts", payouts.NewHandler(pool).Register)
+		r.Route("/api/payouts", payoutsHandler.Register)
 	})
 
 	// Internal — only reachable from AI worker (same private network on Fly.io)
