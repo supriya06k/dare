@@ -7,10 +7,10 @@ import "testing"
 func TestCoinsForPayout(t *testing.T) {
 	const perUSD, perINR = int64(100), int64(1)
 	cases := []struct {
-		name       string
-		provider   string
-		usd, inr   float64
-		want       int64
+		name     string
+		provider string
+		usd, inr float64
+		want     int64
 	}{
 		{"stripe $5", "stripe", 5, 0, 500},
 		{"stripe $12.34", "stripe", 12.34, 0, 1234},
@@ -27,26 +27,26 @@ func TestCoinsForPayout(t *testing.T) {
 	}
 }
 
-// TestWithdrawDecision locks the payout authorization rule: KYC required, positive
+// TestAuthorizeWithdrawal locks the payout authorization rule: KYC required, positive
 // amount, and never more than the Coins balance.
-func TestWithdrawDecision(t *testing.T) {
+func TestAuthorizeWithdrawal(t *testing.T) {
 	cases := []struct {
 		name      string
 		bal, need int64
 		kyc       bool
-		want      string
+		want      error
 	}{
-		{"no kyc blocks", 1000, 100, false, "kyc_required"},
-		{"zero amount", 1000, 0, true, "invalid_amount"},
-		{"over balance", 100, 101, true, "insufficient_balance"},
-		{"exact balance ok", 100, 100, true, ""},
-		{"within balance ok", 1000, 300, true, ""},
-		{"no kyc takes precedence over balance", 0, 100, false, "kyc_required"},
+		{"no kyc blocks", 1000, 100, false, ErrKYCRequired},
+		{"zero amount", 1000, 0, true, ErrInvalidAmount},
+		{"over balance", 100, 101, true, ErrInsufficientBalance},
+		{"exact balance ok", 100, 100, true, nil},
+		{"within balance ok", 1000, 300, true, nil},
+		{"no kyc takes precedence over balance", 0, 100, false, ErrKYCRequired},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := withdrawDecision(c.bal, c.need, c.kyc); got != c.want {
-				t.Fatalf("withdrawDecision(bal=%d, need=%d, kyc=%v) = %q, want %q", c.bal, c.need, c.kyc, got, c.want)
+			if got := authorizeWithdrawal(c.bal, c.need, c.kyc); got != c.want {
+				t.Fatalf("authorizeWithdrawal(bal=%d, need=%d, kyc=%v) = %v, want %v", c.bal, c.need, c.kyc, got, c.want)
 			}
 		})
 	}

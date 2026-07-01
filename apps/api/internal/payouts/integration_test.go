@@ -11,11 +11,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/dare-app/api/pkg/config"
 	"github.com/dare-app/api/pkg/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
@@ -57,17 +59,32 @@ func setupDB(t *testing.T) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 
-	// Apply the base schema migration.
+	// Apply all schema migrations in order.
 	_, thisFile, _, _ := runtime.Caller(0)
-	migPath := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..", "infra", "migrations", "001_initial.up.sql")
-	sqlBytes, err := os.ReadFile(migPath)
-	if err != nil {
-		t.Fatalf("read migration %s: %v", migPath, err)
+	migDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..", "infra", "migrations")
+	ups, err := filepath.Glob(filepath.Join(migDir, "*.up.sql"))
+	if err != nil || len(ups) == 0 {
+		t.Fatalf("find migrations in %s: %v", migDir, err)
 	}
-	if _, err := pool.Exec(ctx, string(sqlBytes)); err != nil {
-		t.Fatalf("apply migration: %v", err)
+	sort.Strings(ups)
+	for _, f := range ups {
+		sqlBytes, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatalf("read migration %s: %v", f, err)
+		}
+		if _, err := pool.Exec(ctx, string(sqlBytes)); err != nil {
+			t.Fatalf("apply migration %s: %v", filepath.Base(f), err)
+		}
 	}
 	return pool
+}
+
+// newTestHandler wires the payouts layers (store -> service -> handler) with a fixed
+// config, mirroring cmd/server but without env dependence.
+func newTestHandler(pool *pgxpool.Pool) *Handler {
+	return NewHandler(NewService(NewStore(pool), config.Payouts{
+		CoinsPerUSD: 100, CoinsPerINR: 1, KYCWebhookSecret: "wh-secret",
+	}))
 }
 
 func asUser(req *http.Request, userID int64) *http.Request {
@@ -90,9 +107,7 @@ func coinsBalance(t *testing.T, pool *pgxpool.Pool, userID int64) int64 {
 func TestPayoutsIntegration(t *testing.T) {
 	pool := setupDB(t)
 	ctx := context.Background()
-	t.Setenv("KYC_WEBHOOK_SECRET", "wh-secret") // COINS_PER_USD defaults to 100 -> $1 = 100 Coins
-
-	h := NewHandler(pool) // ensureSchema adds kyc_verified
+	h := newTestHandler(pool) // KYC secret "wh-secret", COINS_PER_USD 100
 
 	// Seed: user 1 with 1000 Coins (= $10 at the default rate).
 	if _, err := pool.Exec(ctx, `INSERT INTO users (id, firebase_uid, phone) VALUES (1,'fb1','+910000000001')`); err != nil {
@@ -161,8 +176,7 @@ func TestPayoutsIntegration(t *testing.T) {
 func TestPayoutConcurrentNoDoubleSpend(t *testing.T) {
 	pool := setupDB(t)
 	ctx := context.Background()
-	t.Setenv("KYC_WEBHOOK_SECRET", "wh-secret")
-	h := NewHandler(pool)
+	h := newTestHandler(pool)
 
 	// User with 1000 Coins (= $10) and KYC verified. Each request asks for $6 (600 Coins),
 	// so at most ONE can succeed; a second would overdraw.

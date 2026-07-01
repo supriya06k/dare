@@ -20,6 +20,7 @@ import (
 	"github.com/dare-app/api/internal/users"
 	"github.com/dare-app/api/internal/ws"
 	"github.com/dare-app/api/pkg/cache"
+	"github.com/dare-app/api/pkg/config"
 	"github.com/dare-app/api/pkg/db"
 	"github.com/dare-app/api/pkg/middleware"
 	"github.com/go-chi/chi/v5"
@@ -30,6 +31,8 @@ import (
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
+
+	cfg := config.Load()
 
 	pool, err := db.Connect(os.Getenv("DATABASE_URL"))
 	if err != nil {
@@ -65,7 +68,10 @@ func main() {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	payoutsHandler := payouts.NewHandler(pool)
+	payoutsHandler := payouts.NewHandler(payouts.NewService(payouts.NewStore(pool), cfg.Payouts))
+	if cfg.Payouts.KYCWebhookSecret == "" {
+		slog.Warn("KYC_WEBHOOK_SECRET unset — KYC updates are disabled and payouts will stay blocked (fail closed)")
+	}
 
 	// Public routes
 	r.Post("/api/auth/otp/send", auth.NewHandler(pool).SendOTP)
