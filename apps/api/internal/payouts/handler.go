@@ -116,24 +116,7 @@ func (h *Handler) Request(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch KYC status + the user's real Coins ledger balance.
-	var kycVerified bool
-	var balanceCoins int64
-	err := h.db.QueryRow(r.Context(), `
-		SELECT COALESCE(u.kyc_verified, FALSE),
-		       COALESCE((SELECT SUM(amount) FROM ledger WHERE user_id = u.id AND currency = 'coins'), 0)::bigint
-		FROM users u WHERE u.id = $1
-	`, uid).Scan(&kycVerified, &balanceCoins)
-	if err != nil {
-		apperr.Write(w, apperr.ErrNotFound)
-		return
-	}
-
 	neededCoins := coinsForPayout(body.Provider, body.AmountUSD, body.AmountINR, coinsPerUSD(), coinsPerINR())
-	if reason := withdrawDecision(balanceCoins, neededCoins, kycVerified); reason != "" {
-		apperr.JSON(w, http.StatusForbidden, map[string]string{"error": reason})
-		return
-	}
 
 	now := time.Now().Unix()
 	var providerRef string
@@ -146,14 +129,32 @@ func (h *Handler) Request(w http.ResponseWriter, r *http.Request) {
 		amountUSD, amountINR = nil, body.AmountINR
 	}
 
-	// Authorize atomically: record the payout AND debit the Coins balance in one tx,
-	// so the same balance can never be withdrawn twice.
+	// Authorize + debit atomically, guarding against concurrent double-spend: lock the
+	// user row (FOR UPDATE) and read KYC + the real Coins balance INSIDE the tx, so two
+	// simultaneous requests serialize — the second sees the first's committed debit.
 	tx, err := h.db.Begin(r.Context())
 	if err != nil {
 		apperr.Write(w, apperr.New(500, "db error"))
 		return
 	}
 	defer tx.Rollback(r.Context())
+
+	var kycVerified bool
+	var balanceCoins int64
+	if err := tx.QueryRow(r.Context(), `
+		SELECT COALESCE(u.kyc_verified, FALSE),
+		       COALESCE((SELECT SUM(amount) FROM ledger WHERE user_id = u.id AND currency = 'coins'), 0)::bigint
+		FROM users u WHERE u.id = $1
+		FOR UPDATE
+	`, uid).Scan(&kycVerified, &balanceCoins); err != nil {
+		apperr.Write(w, apperr.ErrNotFound)
+		return
+	}
+
+	if reason := withdrawDecision(balanceCoins, neededCoins, kycVerified); reason != "" {
+		apperr.JSON(w, http.StatusForbidden, map[string]string{"error": reason})
+		return
+	}
 
 	var id int64
 	if err := tx.QueryRow(r.Context(), `

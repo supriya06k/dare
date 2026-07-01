@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -152,5 +153,51 @@ func TestPayoutsIntegration(t *testing.T) {
 	}
 	if bal := coinsBalance(t, pool, 1); bal != 400 {
 		t.Fatalf("balance after second (rejected) payout = %d, want 400", bal)
+	}
+}
+
+// TestPayoutConcurrentNoDoubleSpend fires many simultaneous payout requests against a
+// balance that can only cover one, and asserts exactly one succeeds (FOR UPDATE serialization).
+func TestPayoutConcurrentNoDoubleSpend(t *testing.T) {
+	pool := setupDB(t)
+	ctx := context.Background()
+	t.Setenv("KYC_WEBHOOK_SECRET", "wh-secret")
+	h := NewHandler(pool)
+
+	// User with 1000 Coins (= $10) and KYC verified. Each request asks for $6 (600 Coins),
+	// so at most ONE can succeed; a second would overdraw.
+	if _, err := pool.Exec(ctx, `INSERT INTO users (id, firebase_uid, phone, kyc_verified) VALUES (1,'fb1','+910000000001', TRUE)`); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO ledger (user_id, currency, amount, reason) VALUES (1,'coins',1000,'seed')`); err != nil {
+		t.Fatalf("seed ledger: %v", err)
+	}
+
+	const n = 8
+	var wg sync.WaitGroup
+	codes := make([]int, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			req := asUser(httptest.NewRequest(http.MethodPost, "/api/payouts/request", strings.NewReader(`{"amount_usd":6,"provider":"stripe"}`)), 1)
+			rr := httptest.NewRecorder()
+			h.Request(rr, req)
+			codes[idx] = rr.Code
+		}(i)
+	}
+	wg.Wait()
+
+	success := 0
+	for _, c := range codes {
+		if c == http.StatusOK {
+			success++
+		}
+	}
+	if success != 1 {
+		t.Fatalf("concurrent payouts: %d succeeded, want exactly 1 (codes=%v)", success, codes)
+	}
+	if bal := coinsBalance(t, pool, 1); bal != 400 {
+		t.Fatalf("balance after concurrent payouts = %d, want 400 (never negative / double-spent)", bal)
 	}
 }
