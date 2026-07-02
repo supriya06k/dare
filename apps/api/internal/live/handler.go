@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -95,35 +96,47 @@ func (h *Handler) Vote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// One vote per user per session (Redis dedup; live sessions are ephemeral).
+	// One vote per user per session, deduped in Redis. Dedup is mandatory: without it a
+	// user could vote repeatedly and farm Coins, so a missing or unreachable Redis must
+	// fail closed (reject the vote) rather than wave every request through.
+	if h.rdb == nil {
+		slog.Error("live vote rejected: redis unavailable for dedup", "session", id, "user", userID)
+		apperr.Write(w, apperr.New(http.StatusServiceUnavailable, "voting temporarily unavailable"))
+		return
+	}
 	voteKey := fmt.Sprintf("livevote:%d:%d", id, userID)
-	first := true
-	if h.rdb != nil {
-		if ok, err := h.rdb.SetNX(r.Context(), voteKey, 1, 6*time.Hour).Result(); err == nil {
-			first = ok
-		}
+	first, err := h.rdb.SetNX(r.Context(), voteKey, 1, 6*time.Hour).Result()
+	if err != nil {
+		slog.Error("live vote rejected: redis dedup failed", "session", id, "user", userID, "err", err)
+		apperr.Write(w, apperr.New(http.StatusServiceUnavailable, "voting temporarily unavailable"))
+		return
 	}
 
-	earned := 0
+	var pass, fail, earned int
 	if first {
 		col := "pass_votes"
 		if req.Verdict == "fail" {
 			col = "fail_votes"
 		}
-		// Tally + coin award + votes_given atomically. On failure, release the dedup key
-		// so the user can retry — otherwise they'd be locked out with no vote recorded.
-		if err := h.recordLiveVote(r.Context(), id, userID, col); err != nil {
-			if h.rdb != nil {
-				h.rdb.Del(r.Context(), voteKey)
-			}
+		// Tally + coin award + votes_given commit atomically, and the new tally is read
+		// back from the same UPDATE so the broadcast reflects a committed count. On failure,
+		// release the dedup key so the user can retry — otherwise they'd be locked out with
+		// no vote recorded.
+		p, f, recErr := h.recordLiveVote(r.Context(), id, userID, col)
+		if recErr != nil {
+			h.rdb.Del(r.Context(), voteKey)
 			apperr.Write(w, apperr.New(http.StatusInternalServerError, "db error"))
 			return
 		}
-		earned = 3
+		pass, fail, earned = p, f, 3
+	} else {
+		// Already voted — report the current tally without touching it.
+		if err := h.db.QueryRow(r.Context(),
+			`SELECT pass_votes, fail_votes FROM live_sessions WHERE id=$1`, id).Scan(&pass, &fail); err != nil {
+			apperr.Write(w, apperr.New(http.StatusInternalServerError, "db error"))
+			return
+		}
 	}
-
-	var pass, fail int
-	h.db.QueryRow(r.Context(), `SELECT pass_votes, fail_votes FROM live_sessions WHERE id=$1`, id).Scan(&pass, &fail)
 
 	// Broadcast to the session's room (the live screen subscribes to /ws/live/{sessionID}).
 	h.hub.Broadcast(strconv.FormatInt(id, 10), "vote_update", ws.VoteUpdate{
@@ -139,24 +152,29 @@ func (h *Handler) Vote(w http.ResponseWriter, r *http.Request) {
 }
 
 // recordLiveVote applies the tally bump, coin award, and votes_given increment for a
-// live vote in a single transaction.
-func (h *Handler) recordLiveVote(ctx context.Context, sessionID, userID int64, col string) error {
+// live vote in a single transaction, returning the updated pass/fail tally read back
+// from the same UPDATE so the caller broadcasts a consistent, committed count.
+func (h *Handler) recordLiveVote(ctx context.Context, sessionID, userID int64, col string) (pass, fail int, err error) {
 	tx, err := h.db.Begin(ctx)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := tx.Exec(ctx, `UPDATE live_sessions SET `+col+`=`+col+`+1 WHERE id=$1`, sessionID); err != nil {
-		return err
+	if err = tx.QueryRow(ctx, `UPDATE live_sessions SET `+col+`=`+col+`+1 WHERE id=$1
+		RETURNING pass_votes, fail_votes`, sessionID).Scan(&pass, &fail); err != nil {
+		return 0, 0, err
 	}
-	if _, err := tx.Exec(ctx, `
+	if _, err = tx.Exec(ctx, `
 		INSERT INTO ledger (user_id, currency, amount, reason, created_at)
 		VALUES ($1, 'coins', 3, $2, NOW())`, userID, fmt.Sprintf("live_vote:%d", sessionID)); err != nil {
-		return err
+		return 0, 0, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE users SET votes_given=votes_given+1 WHERE id=$1`, userID); err != nil {
-		return err
+	if _, err = tx.Exec(ctx, `UPDATE users SET votes_given=votes_given+1 WHERE id=$1`, userID); err != nil {
+		return 0, 0, err
 	}
-	return tx.Commit(ctx)
+	if err = tx.Commit(ctx); err != nil {
+		return 0, 0, err
+	}
+	return pass, fail, nil
 }
