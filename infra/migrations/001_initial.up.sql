@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS drops (
     dare_id              BIGINT NOT NULL REFERENCES dares(id),
     user_id              BIGINT REFERENCES users(id) ON DELETE SET NULL,
     status               TEXT NOT NULL DEFAULT 'accepted',
-    -- accepted | pending | voting | verified | rejected | ai_rejected | forfeited
+    -- accepted | pending | voting | verified | ai_rejected | crowd_rejected | forfeited
     proof_url            TEXT,           -- R2 key or external URL
     proof_submitted_at   TIMESTAMPTZ,
     ai_confidence        FLOAT,

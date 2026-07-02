@@ -135,15 +135,15 @@ export interface DuplicateCheckResponse {
 
 export interface Payout {
   id: number;
-  amountUsd: number;
+  amountUsd: number | null;
+  amountInr: number | null;
   provider: "stripe" | "razorpay";
+  providerRef?: string;
   status: "pending" | "processing" | "paid" | "failed";
-  createdAt: string;
+  requestedAt: string;
   paidAt: string | null;
 }
 
 export interface KYCStatus {
-  verified: boolean;
-  provider: string | null;
-  pendingFields: string[];
+  kycVerified: boolean;
 }

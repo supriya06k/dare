@@ -1,6 +1,8 @@
 package users
 
 import (
+	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/dare-app/api/pkg/apperr"
@@ -87,6 +89,18 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) RegisterFCMToken(w http.ResponseWriter, r *http.Request) {
-	// stub — stores FCM device token for push notifications
+	userID := middleware.UserID(r.Context())
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Token == "" {
+		apperr.Write(w, apperr.ErrBadRequest)
+		return
+	}
+	if _, err := h.db.Exec(r.Context(), `UPDATE users SET fcm_token=$1 WHERE id=$2`, req.Token, userID); err != nil {
+		slog.Error("users: register fcm token failed", "user_id", userID, "err", err)
+		apperr.Write(w, apperr.New(http.StatusInternalServerError, "db error"))
+		return
+	}
 	apperr.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

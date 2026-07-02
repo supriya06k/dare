@@ -66,15 +66,13 @@ export default function PayoutsScreen() {
         </View>
 
         {/* KYC banner */}
-        {kyc && !kyc.verified && (
+        {kyc && !kyc.kycVerified && (
           <View style={styles.kycBanner}>
             <Text style={styles.kycEmoji}>⚠️</Text>
             <View style={styles.kycCopy}>
               <Text style={styles.kycTitle}>Verify your identity to cash out</Text>
               <Text style={styles.kycSub}>
-                {kyc.pendingFields.length > 0
-                  ? `Missing: ${kyc.pendingFields.join(", ")}`
-                  : "KYC required before your first payout."}
+                KYC required before your first payout.
               </Text>
             </View>
             <PressButton
@@ -90,7 +88,7 @@ export default function PayoutsScreen() {
         <PressButton
           label="Request payout"
           onPress={() => setRequestOpen(true)}
-          disabled={!kyc?.verified || estimatedUsd <= 0}
+          disabled={!kyc?.kycVerified || estimatedUsd <= 0}
         />
 
         {/* History */}
@@ -118,12 +116,18 @@ export default function PayoutsScreen() {
 
 function PayoutRow({ payout }: { payout: Payout }) {
   const color = STATUS_COLOR[payout.status];
+  const amountLabel =
+    payout.amountInr != null
+      ? `₹${payout.amountInr.toFixed(2)}`
+      : payout.amountUsd != null
+        ? `$${payout.amountUsd.toFixed(2)}`
+        : "—";
   return (
     <View style={styles.payoutRow}>
       <View style={styles.payoutInfo}>
-        <Text style={styles.payoutAmount}>${payout.amountUsd.toFixed(2)}</Text>
+        <Text style={styles.payoutAmount}>{amountLabel}</Text>
         <Text style={styles.payoutMeta}>
-          {payout.provider} · {new Date(payout.createdAt).toLocaleDateString()}
+          {payout.provider} · {new Date(payout.requestedAt).toLocaleDateString()}
         </Text>
       </View>
       <View style={[styles.statusPill, { backgroundColor: color + "22" }]}>
@@ -148,17 +152,19 @@ function RequestSheet({
   const handleClose = useCallback(() => onClose(), [onClose]);
 
   const submit = () => {
-    const usd = parseFloat(amount);
-    if (!usd || usd <= 0) {
+    const value = parseFloat(amount);
+    if (!value || value <= 0) {
       Alert.alert("Invalid amount", "Enter a number greater than 0.");
       return;
     }
-    if (usd > maxUsd) {
+    if (provider === "stripe" && value > maxUsd) {
       Alert.alert("Too much", `Max available is $${maxUsd.toFixed(2)}.`);
       return;
     }
     request(
-      { amountUsd: usd, provider },
+      provider === "razorpay"
+        ? { provider, amount_inr: value }
+        : { provider, amount_usd: value },
       {
         onSuccess: () => sheetRef.current?.close(),
         onError: () =>
@@ -179,10 +185,14 @@ function RequestSheet({
       <BottomSheetView style={styles.sheetContent}>
         <Text style={styles.sheetTitle}>Request payout</Text>
         <Text style={styles.sheetSub}>
-          Available: ${maxUsd.toFixed(2)}
+          {provider === "razorpay"
+            ? "Enter amount in INR"
+            : `Available: $${maxUsd.toFixed(2)}`}
         </Text>
 
-        <Text style={styles.label}>Amount (USD)</Text>
+        <Text style={styles.label}>
+          Amount ({provider === "razorpay" ? "INR" : "USD"})
+        </Text>
         <BottomSheetTextInput
           style={styles.input}
           placeholder="0.00"
